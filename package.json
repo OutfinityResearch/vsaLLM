@@ -1,0 +1,37 @@
+{
+  "name": "vsa-pathmoe-tinystories-official-benchmark",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reproducible VSA-PathMoE-10M versus official TinyStories benchmark",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "doctor": "node scripts/experiment.mjs doctor",
+    "doctor:dgx": "node scripts/experiment.mjs doctor-dgx",
+    "download": "node scripts/experiment.mjs download",
+    "download:full": "node scripts/experiment.mjs download-full",
+    "download:deployment": "node scripts/experiment.mjs download-deployment",
+    "prepare": "node scripts/experiment.mjs prepare",
+    "train": "node scripts/experiment.mjs train",
+    "evaluate": "node scripts/experiment.mjs evaluate",
+    "evaluate:custom": "node scripts/experiment.mjs evaluate-custom",
+    "benchmark": "node scripts/experiment.mjs benchmark",
+    "benchmark:matrix": "node scripts/experiment.mjs benchmark-matrix",
+    "benchmark:custom:matrix": "node scripts/experiment.mjs benchmark-custom-matrix",
+    "report": "node scripts/experiment.mjs report",
+    "blind": "node scripts/experiment.mjs blind",
+    "handoff:create": "node scripts/handoff.mjs create",
+    "handoff:verify": "node scripts/handoff.mjs verify",
+    "smoke": "node scripts/experiment.mjs smoke",
+    "smoke:offline": "node scripts/offline-smoke.mjs",
+    "full": "node scripts/experiment.mjs full",
+    "test": "node --test tests/*.test.mjs && node scripts/test-python.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "docs:matrix": "node scripts/generate_specs_matrix.mjs",
+    "docs:verify": "node scripts/verify_docs_links.mjs",
+    "docs:serve-check": "node scripts/verify_static_site.js docs --path /index.html --path /architecture.html --path /dgx-runbook.html --path /partials/header.html --path /specs/matrix.md --expect /index.html=VSA-PathMoE --expect /specs/matrix.md=Specification"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

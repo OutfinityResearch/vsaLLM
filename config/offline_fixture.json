@@ -1,0 +1,88 @@
+{
+  "paths": {
+    "assets_manifest": "tests/fixtures/assets.json"
+  },
+  "sources": {
+    "dataset_repo": "offline-fixture",
+    "dataset_revision": "local",
+    "train_file": "tiny_train.txt",
+    "valid_file": "tiny_valid.txt",
+    "prompts_file": "prompts.yaml",
+    "official_models": []
+  },
+  "comparison": {
+    "primary_official_model_id": null
+  },
+  "runtime": {
+    "device": "cpu",
+    "dtype": "fp32",
+    "threads": 1
+  },
+  "data": {
+    "prepared_dir": "data/prepared/offline_fixture",
+    "use_valid_as_train": false,
+    "max_train_stories": 0,
+    "max_eval_stories": 0,
+    "min_story_chars": 20,
+    "minimum_continuation_chars": 4,
+    "conditioning_prefix_characters": 24,
+    "vocab_size": 320,
+    "tokenizer_sample_stories": 16,
+    "router_sample_stories": 16,
+    "vsa_dimension": 64,
+    "router_prefix_bytes": 64,
+    "role_period": 8,
+    "router_product_k": 2,
+    "router_kmeans_iterations": 3,
+    "official_valid_validation_fraction": 0.5
+  },
+  "model": {
+    "block_size": 64,
+    "d_model": 32,
+    "n_layer": 1,
+    "n_head": 4,
+    "shared_hidden": 24,
+    "expert_hidden": 8
+  },
+  "training": {
+    "batch_size": 2,
+    "gradient_accumulation": 1,
+    "joint_target_tokens": 1200,
+    "expert_specialization_target_tokens": 400,
+    "learning_rate": 0.003,
+    "minimum_learning_rate": 0.0003,
+    "expert_learning_rate": 0.002,
+    "expert_minimum_learning_rate": 0.0002,
+    "eval_every_target_tokens": 500,
+    "eval_batches": 2,
+    "eval_batch_size": 2,
+    "log_every_steps": 5
+  },
+  "evaluation": {
+    "test_stories": 2,
+    "common_context_length": 64,
+    "scoring_stride": 32,
+    "prompt_count": 2,
+    "hellaswag_examples": -1,
+    "ablation_batches": 2,
+    "ablation_batch_size": 2,
+    "generation": {
+      "samples_per_prompt": 1,
+      "max_new_tokens": 4,
+      "temperature": 0.8,
+      "top_k": 10,
+      "top_p": 0.95
+    }
+  },
+  "benchmark": {
+    "common_context_length": 64,
+    "prompt_character_targets": [
+      24
+    ],
+    "decode_tokens": 2,
+    "warmup_repeats": 1,
+    "repeats": 2,
+    "prompt_samples_per_target": 1,
+    "primary_prompt_character_target": 24
+  }
+}

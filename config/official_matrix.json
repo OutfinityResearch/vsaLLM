@@ -1,0 +1,12 @@
+{
+  "paths": {"assets_manifest": "data/assets_official_matrix.json"},
+  "sources": {
+    "official_models": [
+      {"id": "roneneldan/TinyStories-1M", "revision": "main", "trained_context_length": 512},
+      {"id": "roneneldan/TinyStories-3M", "revision": "main", "trained_context_length": 512},
+      {"id": "roneneldan/TinyStories-8M", "revision": "main", "trained_context_length": 512},
+      {"id": "roneneldan/TinyStories-33M", "revision": "main", "trained_context_length": 512}
+    ]
+  },
+  "data": {"prepared_dir": "data/prepared/full"}
+}

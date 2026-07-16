@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="VSA-PathMoE model and routing architecture.">
+  <title>Architecture | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / Architecture</p>
+        <p class="kicker">Symbolic route, tensor continuation</p>
+        <h1>Architecture</h1>
+        <p class="hero__lede">A deterministic prefix router selects one small expert path while the decoder retains a shared attention and feed-forward backbone.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>Request-level routing</h2>
+          <p>The router consumes at most 512 UTF-8 bytes from the canonical conditioning prefix. It never sees the held-out continuation. Each byte has two independent bipolar vectors. The first 256-dimensional half bundles byte identity; the second binds byte identity to one of 64 periodic positional-role vectors before bundling. Ties at zero resolve to <code>+1</code>, producing a deterministic 512-dimensional bipolar code.</p>
+          <p>Two independently fitted binary k-means codebooks contain eight prototypes each. Int16 dot products rank the request code against each codebook; the Cartesian product of the two winning prototype indexes identifies one of <code>8 × 8 = 64</code> routes. Dot-product ranking is equivalent to Hamming ranking for bipolar vectors. The code notes that XNOR plus popcount could preserve route semantics, but this repository implements NumPy int16 products.</p>
+          <pre class="mermaid">
+flowchart TD
+  P[Causal raw-text prefix] --> U[Up to 512 UTF-8 bytes]
+  U --> C[Content bundle: 256 bipolar dimensions]
+  U --> O[Byte × periodic role bundle: 256 dimensions]
+  C --> A[Nearest of 8 prototypes]
+  O --> B[Nearest of 8 prototypes]
+  A --> R[Route = A × 8 + B]
+  B --> R
+  R --> X[One route held for the full continuation]
+          </pre>
+          <p>Router fitting uses only training prefixes, a fixed seed offset, and 12 binary k-means iterations. Prepared metadata records route counts, entropy, prototype histories, router hash, and the causal-prefix invariant. This is a deterministic content-and-order router, not a learned token gate and not a claim that semantic relevance has already been proven.</p>
+        </section>
+        <section>
+          <h2>Small tensor kernels</h2>
+          <p>The decoder has a 2,048-piece SentencePiece vocabulary, width 192, six layers, six attention heads, learned positions, RMS normalization, tied token/output embeddings, and a 256-token block size. PyTorch scaled dot-product attention provides causal prefill and cached single-token decoding.</p>
+          <p>Each Transformer layer contains a shared feed-forward branch of width 128 and 64 route-specific micro-experts of width 57. Only the selected expert is used. In evaluation, its input and output matrices are concatenated with the shared branch and cached for up to four active routes. Two fused linear operations then compute both branches while preserving independent parameters. Moving the model between devices or dtypes clears this derived cache.</p>
+          <pre class="mermaid">
+flowchart LR
+  T[Token state d=192] --> N1[RMSNorm]
+  N1 --> A[6-head causal attention]
+  A --> S1[Residual]
+  T --> S1
+  S1 --> N2[RMSNorm]
+  N2 --> SH[Shared MLP h=128]
+  N2 --> EX[Selected expert h=57]
+  SH --> SUM[Branch sum]
+  EX --> SUM
+  SUM --> S2[Residual output]
+  S1 --> S2
+          </pre>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Accounting term</th><th>Parameters</th><th>FP32 bytes</th></tr></thead>
+              <tbody>
+                <tr><td>Backbone and shared branches</td><td>1,624,512</td><td>6,498,048</td></tr>
+                <tr><td>All route experts</td><td>8,404,992</td><td>33,619,968</td></tr>
+                <tr><td>One expert path across six layers</td><td>131,328</td><td>525,312</td></tr>
+                <tr><td>Arithmetic active per request</td><td>1,755,840</td><td>7,023,360</td></tr>
+                <tr><td>Total model</td><td>10,029,504</td><td>40,118,016</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section>
+          <h2>Why this is MoE-like, and what differs</h2>
+          <p>Conventional sparsely gated MoE systems commonly select experts per token with a learned gate and may require balancing losses or distributed communication. VSA-PathMoE selects once per request outside the tensor decoder, activates the corresponding narrow expert at every layer, and reuses that choice for decoding. This reduces route work and makes the active tensor path predictable on a CPU.</p>
+          <p>The design is adjacent to deterministic hash routing and product-key access. Its specific combination—causal raw-prefix VSA encoding, two product codebooks, request-stable routing, and tiny per-layer experts—is the implementation under test. The documentation deliberately avoids a priority claim. Related work must be reviewed before describing it as a new MoE category; measured advantages must be restricted to executed baselines and hardware.</p>
+        </section>
+        <section>
+          <h2>Controls that test the mechanism</h2>
+          <p><code>dgx_spark_dense_active</code> has one fixed route and exactly 1,755,840 parameters, matching the sparse model's arithmetic-active count. <code>dgx_spark_dense_total</code> also has one fixed route but expands the shared branch to width 3,719, producing exactly 10,029,504 parameters. Both retain the custom tokenizer, backbone family, preparation, and training protocol.</p>
+          <p>Within the sparse checkpoint, <code>shared_only</code> and <code>permuted_route</code> ablations test whether expert tensors and correct route identity reduce held-out loss. The dense profiles test whether an observed result follows merely from parameter budget or from conditional activation. Official Hugging Face checkpoints remain valuable external anchors, but their different tokenizer, backbone, and historical training protocol cannot isolate the routing mechanism.</p>
+          <div class="callout">
+            <p><strong>Attribution standard.</strong> A fast external-baseline comparison is descriptive. A causal sparsity interpretation additionally needs separately trained dense controls, positive expert and routing ablations, frozen optimization budgets, and preferably multiple seeds.</p>
+          </div>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

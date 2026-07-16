@@ -1,0 +1,10 @@
+# Install PyTorch for your platform first: https://pytorch.org/get-started/locally/
+numpy>=2.0,<3
+sentencepiece>=0.2.0,<0.3
+PyYAML>=6.0,<7
+psutil>=6.0,<8
+huggingface_hub>=0.28,<2
+transformers>=4.46,<5
+datasets>=3.2,<5
+safetensors>=0.4,<1
+pytest>=8,<10

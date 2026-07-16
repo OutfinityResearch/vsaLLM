@@ -1,0 +1,6 @@
+{
+  "paths": {"assets_manifest": "data/assets_full.json"},
+  "runtime": {"device": "cuda", "dtype": "bf16", "threads": 4},
+  "data": {"prepared_dir": "data/prepared/full"},
+  "training": {"batch_size": 32, "gradient_accumulation": 2, "eval_batch_size": 16}
+}

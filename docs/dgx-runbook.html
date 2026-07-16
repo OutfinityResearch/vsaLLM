@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Official staged DGX Spark and commodity-x86 execution runbook for VSA-PathMoE.">
+  <title>DGX runbook | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / DGX runbook</p>
+        <p class="kicker">Official staged execution</p>
+        <h1>DGX Spark runbook</h1>
+        <p class="hero__lede">Train and evaluate with CUDA BF16 on a clean DGX Spark container, then transfer the frozen experiment to a commodity x86 host for CPU FP32 measurement.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>Stage 0 — freeze the run</h2>
+          <p>Review the DS contracts, base and DGX profiles, registered gates, official revisions, prepared format, checkpoint cadence, and dense-control roles before inspecting final test outcomes. Commit the reviewed tree and begin from a clean worktree. Archive the Git commit and the package checksum manifest.</p>
+          <pre><code>npm ci
+npm test
+npm run docs:verify
+git status --short</code></pre>
+          <p>The final line must be empty for the official run. Calibration belongs in <code>dgx_spark_calibration</code> and may establish batch safety or duration only; it must not change thresholds or select a favorable comparator after held-out results are known.</p>
+        </section>
+        <section>
+          <h2>Stage 1 — pin and build the container</h2>
+          <p>The Dockerfile default <code>nvcr.io/nvidia/pytorch:25.11-py3</code> is a human-readable tag, not an immutable identity. Authenticate to NGC, pull the trusted tag, inspect its registry RepoDigest, and pass the full <code>repository@sha256:…</code> value as the Docker build base. Never invent or copy a digest from this documentation.</p>
+          <pre><code>BASE_TAG=nvcr.io/nvidia/pytorch:25.11-py3
+docker pull "$BASE_TAG"
+BASE_REPODIGEST="$(docker image inspect \
+  --format '{{index .RepoDigests 0}}' "$BASE_TAG")"
+BASE_DIGEST="$(printf '%s' "$BASE_REPODIGEST" | sed 's/.*@//')"
+
+docker build \
+  --build-arg PYTORCH_IMAGE="$BASE_REPODIGEST" \
+  -f containers/dgx-spark/Dockerfile \
+  -t vsa-pathmoe:dgx-25.11 .
+
+DERIVED_ID="$(docker image inspect \
+  --format '{{.Id}}' vsa-pathmoe:dgx-25.11)"
+printf '%s\n%s\n' "$BASE_REPODIGEST" "$DERIVED_ID"</code></pre>
+          <p><code>requirements-dgx.txt</code> pins direct experiment dependencies exactly and deliberately excludes PyTorch. PyTorch and CUDA come from the immutable NGC base and must not be replaced by <code>pip</code>. Archive the resolved base RepoDigest, derived image ID, Dockerfile, requirements lock, and build log.</p>
+        </section>
+        <section>
+          <h2>Stage 2 — start the derived environment</h2>
+          <p>Connect the supplied 240 W power adapter; NVIDIA documents it as required for optimal performance. Record the active system power and thermal configuration with the machine inventory. The cited DGX Spark guide does not prescribe a MAXN command, so do not import a Jetson-specific power command unless the exact deployed DGX OS documentation requires it.</p>
+          <pre><code>mkdir -p "$HOME/.cache/huggingface"
+
+docker run --rm -it --gpus all --ipc=host \
+  --user "$(id -u):$(id -g)" \
+  -e HOME=/tmp/vsa-home \
+  -e HF_HOME=/cache/huggingface \
+  -v "$PWD":/workspace/vsaLLM \
+  -v "$HOME/.cache/huggingface:/cache/huggingface" \
+  -e VSA_CONTAINER_IMAGE_DIGEST="$BASE_DIGEST" \
+  -e VSA_DERIVED_IMAGE_ID="$DERIVED_ID" \
+  vsa-pathmoe:dgx-25.11 bash</code></pre>
+          <p>Host UID/GID prevents root-owned repository artifacts. <code>--ipc=host</code> supplies the shared-memory behavior expected by the framework container, while the explicit writable home and stable host cache keep downloads persistent without a root-owned named volume. The image already declares <code>VSA_CONTAINER_IMAGE=nvcr.io/nvidia/pytorch:25.11-py3</code>. Inside the container, record <code>python -m pip freeze</code>, Node, Python, PyTorch, CUDA, cuDNN, NVIDIA driver, GPU name, compute capability, device memory, DGX OS, and hardware inventory. Store evidence outside ephemeral container layers.</p>
+          <pre><code>npm ci
+npm test
+npm run doctor:dgx -- --profile dgx_spark --strict</code></pre>
+          <p>Do not run <code>npm run setup</code> inside NGC. The derived image already contains its NGC-provided PyTorch/CUDA stack and exact direct dependencies; setup could replace that controlled environment.</p>
+          <p>The strict doctor requires ARM64, NVIDIA GB10 with compute capability 12.1, CUDA and BF16, at least 110 GB reported system memory, at least 20 GB free repository storage, a clean worktree, a container runtime, the exact NGC tag identity, valid base and derived SHA-256 identities, exact direct dependencies, immutable hexadecimal commits for every configured dataset and official model, Node 22 or newer, and the CUDA/BF16 profile.</p>
+          <p>Before doctor execution, general config validation rejects unrepresentable token/route widths, invalid model geometry, empty or negative budgets, inconsistent learning rates, invalid evaluation/generation ranges, and benchmark settings that cannot produce the registered CPU/FP32/x86 comparison.</p>
+          <p>DGX preparation and training invoke the same doctor internally for every <code>dgx_spark*</code> profile. A missing manual preflight cannot make an invalid environment proceed.</p>
+        </section>
+        <section>
+          <h2>Stage 3 — acquire and prepare once</h2>
+          <pre><code>npm run download:full -- --profile dgx_spark
+npm run prepare -- --profile dgx_spark</code></pre>
+          <p>Verify <code>data/assets_dgx_spark.json</code> contains the configured immutable revisions and <code>data/prepared/dgx_spark/PREPARED.json</code> reports format version 5. Archive its preparation signature, tokenizer SHA, router SHA, route distribution, source hashes, runtime-source identity, and preparation container/environment snapshot. The sparse and both dense profiles share this store.</p>
+        </section>
+        <section>
+          <h2>Stage 4 — train and evaluate CUDA BF16</h2>
+          <pre><code>npm run train -- --profile dgx_spark
+npm run evaluate -- --profile dgx_spark
+
+npm run doctor:dgx -- --profile dgx_spark_dense_active --strict
+npm run train -- --profile dgx_spark_dense_active
+npm run evaluate:custom -- --profile dgx_spark_dense_active
+
+npm run doctor:dgx -- --profile dgx_spark_dense_total --strict
+npm run train -- --profile dgx_spark_dense_total
+npm run evaluate:custom -- --profile dgx_spark_dense_total</code></pre>
+          <p>All DGX profiles save format-version 2 recovery checkpoints every 2,000,000 target tokens. If interrupted, resume only from the profile's <code>last.pt</code>. Resume fails closed on resolved config, prepared identity, executable-source hash, PyTorch, CUDA, container digest, optimizer state, and RNG state.</p>
+          <p>After each profile, preserve <code>resolved_config.json</code>, <code>artifacts/</code>, <code>checkpoints/</code>, and <code>evaluation/</code> on durable storage. When the sparse run, both controls, and all evaluations are complete, create the fail-closed handoff manifest:</p>
+          <pre><code>npm run handoff:create -- --profile dgx_spark</code></pre>
+          <p>The command requires a clean Git worktree, prepared format 5, the main and configured control run directories, training summaries, best and last checkpoints, custom evaluations, and every official evaluation in the primary run. It writes schema-v1 <code>handoff/dgx_spark_manifest.json</code> with the exact commit, transfer roots, byte sizes, and SHA-256 for every regular file, and prints the manifest SHA-256 for recording through an out-of-band channel; verification then enforces the exact profile, roots, complete file set, safe relative paths, sizes, and hashes. Do not run reports as a substitute for the missing CPU stage.</p>
+        </section>
+        <section>
+          <h2>Stage 5 — transfer without changing semantics</h2>
+          <pre class="mermaid">
+flowchart LR
+  D[DGX Spark ARM<br>CUDA BF16] -->|checkpoint v2| X[Verified transfer]
+  D -->|evaluation v2| X
+  D -->|resolved configs| X
+  D -->|prepared v5| X
+  D -->|asset revisions| X
+  X --> C[Commodity x86<br>CPU FP32]
+  C --> B[Benchmark v3<br>1, 4, 8 threads]
+  B --> R[Report and blind review]
+          </pre>
+          <p>Transfer exactly the roots listed in the handoff manifest plus the manifest itself. They include <code>data/prepared/dgx_spark</code> and all three run directories. Do not transfer <code>.venv</code>, an interpreter environment, the DGX container filesystem, asset manifests, or Hugging Face caches.</p>
+          <p>On the x86 host, check out the manifest's exact Git commit, install the CPU environment locally, place the transferred roots at their repository-relative paths, and verify every byte before use:</p>
+          <pre><code>npm ci
+npm run setup -- --locked-cpu
+npm run handoff:verify -- --profile dgx_spark
+npm run download:deployment -- --profile dgx_spark</code></pre>
+          <p><code>--locked-cpu</code> force-installs the official <code>torch==2.10.0</code> CPU wheel and every exact direct pin from <code>requirements-dgx.txt</code>, then checks the environment. Prepared format 5 is path-independent, while asset manifests contain local snapshot paths. The deployment download regenerates prompts and official snapshots from the same immutable configured revisions without the training corpus or HellaSwag. It cannot be used to prepare or train. Never run <code>prepare</code> for <code>dgx_spark*</code> on x86, edit revision fields, or modify prepared metadata by hand. Record CPU model, architecture, affinity, frequency governor, OS, Node, Python, PyTorch, all runtime dependency versions, and runtime-source hash.</p>
+        </section>
+        <section>
+          <h2>Stage 6 — benchmark CPU FP32 on x86</h2>
+          <p>Inspect <code>lscpu -e=CPU,CORE,SOCKET,ONLINE</code>, then select eight logical CPU IDs that map to eight distinct physical <code>(socket,core)</code> pairs without selected SMT siblings. Keep that same affinity for the sparse model, both official baselines, and both controls. Replace the placeholder only after inspecting the actual host; never copy an example core list blindly.</p>
+          <pre><code>CPUSET=&lt;eight-comma-separated-logical-CPU-ids&gt;
+
+taskset -c "$CPUSET" npm run benchmark:matrix -- --profile dgx_spark \
+  --device cpu --dtype fp32
+
+taskset -c "$CPUSET" npm run benchmark:custom:matrix -- --profile dgx_spark_dense_active \
+  --device cpu --dtype fp32
+
+taskset -c "$CPUSET" npm run benchmark:custom:matrix -- --profile dgx_spark_dense_total \
+  --device cpu --dtype fp32
+
+npm run report -- --profile dgx_spark
+npm run blind -- --profile dgx_spark</code></pre>
+          <p>The three DGX profiles freeze <code>benchmark.required_cpu_affinity_logical_cpus=8</code> and <code>benchmark.require_distinct_physical_cores=true</code>. Before any custom or official adapter/model is loaded, the benchmark snapshots process affinity and Linux sysfs. It fails unless there are exactly eight unique affinity IDs, complete topology metadata, eight distinct <code>(physical_package_id,core_id)</code> pairs, and no selected SMT siblings.</p>
+          <p>The default matrix measures 1, 4, and 8 worker threads without changing the eight-CPU affinity. Each artifact's <code>environment.cpu_topology.logical_cpus[]</code> rows record <code>logical_cpu</code>, <code>physical_package_id</code>, <code>core_id</code>, and <code>thread_siblings_list</code>. Its summary records <code>complete</code>, <code>affinity_logical_cpu_count</code>, <code>affinity_physical_core_count</code>, and <code>affinity_contains_smt_siblings</code>.</p>
+          <p>Because the primary config declares matched controls, the main report fails closed until each control has its resolved config, training summary, custom evaluation, and the same CPU thread-set of custom benchmark files. The report revalidates every topology object and requires exact paired affinity, topology, and observed governors for sparse/official and sparse/control comparisons. It surfaces topology in JSON, Markdown, HTML, and CSV. The operator must keep one recorded governor policy stable, but the code intentionally imposes no particular governor value. Duplicate official evaluations and separate control reports are not required.</p>
+          <p>Review the generated blind form without the key, save the frozen scores, then rerun the primary report to join them. Preserve raw benchmark JSON, comparison JSON, Markdown/HTML reports, CSV, environment snapshots, and all SHA-256 values.</p>
+        </section>
+        <section>
+          <h2>Stage 7 — release or reject the claim</h2>
+          <p>Confirm that the report accepted the same custom checkpoint SHA and preparation signature across quality and CPU artifacts, the exact 8M and 33M revisions, the complete workload manifest, and the configured x86 CPU/FP32 runtime. Inspect every individual external-baseline gate and the main report's descriptive matched-control section. It reports paired conditional-BPB uncertainty, HellaSwag deltas, CPU speed uncertainty, and measured plus persistent-state memory ratios without inventing new control thresholds. Publish failures and uncertainty.</p>
+          <div class="callout callout--danger">
+            <p><strong>Never execute <code>npm run full -- --profile dgx_spark</code>.</strong> It is intentionally disabled. A monolithic run cannot represent the required DGX-to-x86 handoff.</p>
+          </div>
+          <div class="callout callout--warning">
+            <p>Until stages 0–7 are complete and archived, the result remains pending. A calibration, smoke run, DGX-host ARM timing, or partial external-baseline evaluation is not evidence that VSA-PathMoE beats TinyStories.</p>
+          </div>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+{
+  "package_name": "VSA_PathMoE_TinyStories_Official_Benchmark",
+  "package_version": "1.0.0",
+  "build_date": "2026-07-16",
+  "documentation_language": "English",
+  "license": "MIT",
+  "orchestration": "Node.js",
+  "ml_runtime": "Python/PyTorch",
+  "scientific_status": "protocol implemented; result pending",
+  "comparison": {
+    "primary_official_model": "roneneldan/TinyStories-8M",
+    "capacity_anchor": "roneneldan/TinyStories-33M",
+    "matched_control_profiles": {
+      "active_parameter_budget": "dgx_spark_dense_active",
+      "total_parameter_budget": "dgx_spark_dense_total"
+    }
+  },
+  "model_accounting": {
+    "routes": 64,
+    "total_parameters": 10029504,
+    "arithmetic_active_parameters_per_request": 1755840,
+    "inactive_parameters_per_request": 8273664,
+    "arithmetic_active_fraction": 0.17506748090433982,
+    "expert_parameters_per_route_all_layers": 131328,
+    "fp32_total_parameter_bytes": 40118016,
+    "fp32_arithmetic_active_parameter_bytes": 7023360
+  },
+  "execution_contract": {
+    "training_host": "NVIDIA DGX Spark",
+    "training_runtime": "CUDA BF16",
+    "training_profile": "dgx_spark",
+    "container_base_tag": "nvcr.io/nvidia/pytorch:25.11-py3",
+    "container_identity": "registry RepoDigest resolved and recorded by the operator",
+    "benchmark_host": "preregistered commodity x86_64",
+    "benchmark_runtime": "CPU FP32 at 1, 4, and 8 threads",
+    "cpu_environment": "torch==2.10.0 CPU wheel plus requirements-dgx.txt exact pins",
+    "cpu_affinity_contract": "eight logical CPU IDs mapped to eight distinct physical cores without selected SMT siblings"
+  },
+  "artifact_versions": {
+    "prepared_data": 5,
+    "checkpoint": 2,
+    "handoff_manifest": 1,
+    "comparison_report": 4
+  },
+  "entry_points": {
+    "readme": "README.md",
+    "agent_guidance": "AGENTS.md",
+    "technical_documentation": "docs/index.html",
+    "specification_matrix": "docs/specsLoader.html?spec=matrix.md",
+    "coding_style_authority": "docs/specs/DS001-coding-style.md",
+    "dgx_runbook": "docs/dgx-runbook.html",
+    "dgx_handoff_specification": "docs/specs/DS010-dgx-spark-handoff.md"
+  },
+  "verification_commands": {
+    "package_integrity": "npm run verify:package",
+    "project_structure": "node --test tests/project.test.mjs",
+    "full_test_suite": "npm test",
+    "offline_fixture": "npm run smoke:offline",
+    "documentation_links": "npm run docs:verify",
+    "documentation_http": "npm run docs:serve-check"
+  },
+  "distribution": {
+    "external_datasets_included": false,
+    "external_model_weights_included": false,
+    "container_images_included": false,
+    "python_dependencies_vendored": false
+  },
+  "notes": [
+    "Model accounting is an implementation invariant, not a performance or process-memory result.",
+    "Official execution must preserve the exact Git commit, immutable source revisions, container identities, prepared signature, checkpoint hashes, workloads, and runtime provenance.",
+    "No scientific comparison is complete until the DGX evaluations, verified handoff, commodity-x86 matrices, dense controls, report, and blind-review artifacts all exist."
+  ]
+}

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Quality evaluation, ablations, blind review, and validated reporting for VSA-PathMoE.">
+  <title>Evaluation | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / Evaluation</p>
+        <p class="kicker">Same raw continuation, validated provenance</p>
+        <h1>Evaluation and reporting</h1>
+        <p class="hero__lede">Evaluation schema version 2 retains per-story quality, generated continuations, ablations, model identity, and environment evidence for each model.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>Quality construction</h2>
+          <p>Each adapter scores the same deterministic held-out rows from <code>eval/test.jsonl</code>. It receives the raw prefix and raw continuation, applies its own tokenizer, and accumulates negative log likelihood only for continuation tokens. Conditional bits per byte is <code>NLL / (ln(2) × UTF-8 continuation bytes)</code>. Per-story NLL and bytes remain in the artifact so reporting can pair exact stories and bootstrap the aggregate ratio.</p>
+          <p>The custom adapter validates checkpoint format, prepared signature, tokenizer SHA, router SHA, routing mode, route count, and environment provenance before loading. Official adapters validate the selected manifest row and preserve model ID, immutable revision, effective 512-token training context, artifact-config context, parameter counts, and weight-file bytes.</p>
+          <pre class="mermaid">
+sequenceDiagram
+  participant R as Held-out raw record
+  participant C as Custom adapter
+  participant O as Official adapter
+  participant A as Evaluation artifacts
+  participant P as Report validator
+  R->>C: identical prefix + continuation
+  R->>O: identical prefix + continuation
+  C->>A: custom.json, schema v2
+  O->>A: official model JSON, schema v2
+  A->>P: per-story rows + provenance
+  P->>P: pair IDs, validate contexts and revisions
+  P-->>P: 95% paired bootstrap ratio
+          </pre>
+        </section>
+        <section>
+          <h2>Native and common contexts</h2>
+          <p>The primary view is <code>primary_quality_context=native</code>: the custom model uses its 256-token block, while official checkpoints use the configured 512-token historical training support. A diagnostic reruns both at a common 256-token limit. Both results and their per-story rows are mandatory because they answer different questions.</p>
+          <p>The primary gate uses the upper 95% bound of a deterministic paired story bootstrap for the custom/official aggregate conditional-BPB ratio. A ratio at or below 1.02 is non-inferior under the registered margin. Point estimates alone do not pass the gate.</p>
+        </section>
+        <section>
+          <h2>Secondary measurements</h2>
+          <p>HellaSwag is a secondary diagnostic because TinyStories is a synthetic story domain, not a general commonsense corpus. <code>hellaswag_examples=0</code> means the full configured validation split, not zero examples. The report retains raw and length-normalized accuracy and tests the normalized delta against −0.01.</p>
+          <p>The sparse custom evaluation also executes three fixed validation views: the full model, shared branch only, and a deterministic permuted route. The expert-contribution loss gain is <code>shared-only − full</code>; the routing-contribution gain is <code>permuted-route − full</code>. Each must reach 0.005 for the corresponding mechanism gate.</p>
+          <p>Generation uses the frozen prompt set, one greedy completion and three sampled completions per prompt, 128 new tokens, temperature 0.75, top-k 40, and top-p 0.95. These outputs are embedded in the full evaluation object and feed the blind-review packet.</p>
+        </section>
+        <section>
+          <h2>Blind review without provenance fallback</h2>
+          <p><code>npm run blind</code> reads complete <code>custom.json</code> and primary official evaluation objects. It validates profile, model kind and ID, immutable official revision against the current manifest, custom checkpoint SHA, exact prompt and sample counts, aligned IDs, and byte-identical prompts. It does not fall back to detached generation files or another official checkpoint.</p>
+          <p>The exported form randomizes A/B position deterministically from a <code>blindEvaluationId</code> derived from both evaluation hashes and the prompt manifest. Keep <code>results/blind_key_&lt;profile&gt;.json</code> hidden. The evaluator opens only the form, exports scores with the same IDs, and freezes them before the key is joined during reporting.</p>
+          <div class="callout">
+            <p>Regenerating either model's continuations changes the evaluation hashes and requires a new blind review. A score file from an earlier packet is incompatible by construction.</p>
+          </div>
+        </section>
+        <section>
+          <h2>Report validation and outputs</h2>
+          <p>The report reads only the frozen resolved configuration and exact artifact filenames. It rejects missing schemas, reordered model manifests, mutable or mismatched revisions, incompatible checkpoint hashes, differing test rows, wrong native/common context modes, benchmark workload drift, wrong CPU runtime identity, dirty training provenance, and missing primary artifacts.</p>
+          <div class="directory-tree" aria-label="Evaluation and report outputs">
+            <ul>
+              <li><code>runs/&lt;profile&gt;/evaluation/custom.json</code></li>
+              <li><code>runs/&lt;profile&gt;/evaluation/official_roneneldan__TinyStories-8M.json</code></li>
+              <li><code>runs/&lt;profile&gt;/evaluation/official_roneneldan__TinyStories-33M.json</code></li>
+              <li><code>results/comparison_&lt;profile&gt;.json</code> — machine-readable comparisons and gates</li>
+              <li><code>results/REPORT_&lt;profile&gt;.md</code> and <code>.html</code> — human report</li>
+              <li><code>results/cpu_metrics_&lt;profile&gt;.csv</code> — flattened CPU comparison rows</li>
+            </ul>
+          </div>
+          <p>Every official model receives its own comparison row in configured order. Only TinyStories-8M populates the top-level core and final verdict. A missing 8M artifact stops reporting; TinyStories-33M is never promoted as a convenient replacement.</p>
+          <p>The main DGX report also resolves both configured dense-control profiles. Each must supply a frozen config, training summary, custom evaluation, and custom CPU matrix at the same thread values as the sparse run. Control artifacts are provenance-validated and summarized with paired quality uncertainty, HellaSwag delta, CPU speed uncertainty, and measured plus exact persistent-state memory ratios. They remain descriptive evidence rather than new post hoc gates.</p>
+        </section>
+        <section>
+          <h2>Current evidence status</h2>
+          <div class="callout callout--warning">
+            <p><strong>No final scientific verdict is present.</strong> Smoke and calibration artifacts prove software paths only. Until the frozen DGX quality run, all matched controls, the commodity-x86 CPU matrix, and blind scores are archived and validated, the accurate wording is “protocol implemented; result pending.”</p>
+          </div>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

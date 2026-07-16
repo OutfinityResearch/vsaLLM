@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Reproducibility and archive contract for VSA-PathMoE experiments.">
+  <title>Reproducibility | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / Reproducibility</p>
+        <p class="kicker">Identity across stages and hosts</p>
+        <h1>Reproducibility contract</h1>
+        <p class="hero__lede">A result is reproducible only when configuration, source, data semantics, model artifacts, workloads, environments, and raw observations remain joinable.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>Configuration freeze</h2>
+          <p>Each command deep-merges <code>config/base.json</code> with the selected profile. The first artifact-producing command writes <code>runs/&lt;profile&gt;/resolved_config.json</code>. Later preparation, training, and evaluation commands compare the current resolved object with that file and reject drift.</p>
+          <p>Benchmark-only commands may vary device, dtype, and threads because the deployment host is intentionally different. The freeze comparison ignores only those runtime axes; the benchmark artifact itself records them, and reporting selects the configured CPU FP32 identity exactly. A changed model, source revision, workload, seed, threshold, context, or training budget requires a new profile and run directory.</p>
+        </section>
+        <section>
+          <h2>Provenance chain</h2>
+          <pre class="mermaid">
+flowchart TD
+  C[Resolved config SHA] --> P[Prepared signature v5]
+  S[Dataset and model SHAs] --> P
+  P --> K[Checkpoint v2 metadata]
+  R[Runtime source SHA] --> K
+  E[DGX environment + container digest] --> K
+  K --> Q[Evaluation schema v2]
+  K --> B[Benchmark schema v3]
+  W[Workload manifest SHA] --> B
+  Q --> O[Validated report]
+  B --> O
+  A[Blind evaluation ID] --> O
+          </pre>
+          <p>The runtime-source digest covers executable Python, Node scripts, configurations, dependency manifests, <code>requirements-dgx.txt</code>, <code>.dockerignore</code>, and the DGX Dockerfile. Git commit and dirty state are recorded separately. Environment snapshots also record installed direct-runtime dependencies, GPU name, compute capability, device memory, CUDA, cuDNN, and NVIDIA driver. Prepared semantics are linked by signature, tokenizer SHA, and router SHA. Checkpoint, evaluation, benchmark, and blind-review artifacts add their own identities rather than trusting filenames.</p>
+          <p>The DGX-to-x86 transfer adds handoff schema version 1. <code>npm run handoff:create -- --profile dgx_spark</code> hashes the prepared store and the sparse plus matched-control run directories only after required artifacts exist in a clean worktree. The x86 host must check out the manifest's exact commit and pass <code>npm run handoff:verify -- --profile dgx_spark</code> before benchmarking.</p>
+          <p>Mutable Hugging Face branches are resolved to immutable SHAs at download. The final report verifies the complete official list and selected revision. No stage may replace a missing identity with <code>main</code>, a nearby artifact, or the first matching file.</p>
+        </section>
+        <section>
+          <h2>Determinism and uncertainty</h2>
+          <p>The project seed drives preparation sampling, tokenizer/router construction, data splits, training route sampling, prompts, generation, and deterministic bootstrap seeds through explicit offsets. Recovery checkpoints preserve NumPy RNG and optimizer state. Cross-host transfer is safe at the semantic layer because prepared format 5 excludes local paths from its signature.</p>
+          <p>Determinism does not eliminate sampling uncertainty or hardware variability. The report preserves per-story quality rows and per-repetition timing rows, uses a paired story bootstrap for quality, and independently resamples process timing rows for speed ratios. Memory is a descriptive process observation without a confidence interval. Multiple training seeds remain desirable before a broad architectural claim.</p>
+        </section>
+        <section>
+          <h2>Minimum archive</h2>
+          <div class="directory-tree" aria-label="Scientific archive">
+            <ul>
+              <li><code>config/base.json</code> and every executed profile</li>
+              <li><code>runs/&lt;profile&gt;/resolved_config.json</code></li>
+              <li><code>data/assets_dgx_spark.json</code> and immutable snapshot identities</li>
+              <li><code>data/prepared/dgx_spark/PREPARED.json</code>, tokenizer, router, and hashes</li>
+              <li><code>runs/&lt;profile&gt;/artifacts/</code> and both checkpoint files</li>
+              <li><code>runs/&lt;profile&gt;/evaluation/</code> and <code>benchmark/</code> raw JSON</li>
+              <li><code>results/comparison_&lt;profile&gt;.json</code>, reports, CSV, and frozen blind scores</li>
+              <li><code>handoff/dgx_spark_manifest.json</code> and its verified transfer-root inventory</li>
+              <li>DGX doctor output, base RepoDigest, derived image ID, package freeze, driver/OS inventory</li>
+              <li>x86 doctor output, CPU model, affinity, governor, OS, and runtime inventory</li>
+              <li>Git commit, clean-state evidence, package manifest, and SHA-256 list of published artifacts</li>
+            </ul>
+          </div>
+          <p>Keep the blind key private until judgments are frozen, then archive it separately with controlled release. Publish failed gates and incomplete criteria alongside successful ones.</p>
+          <p>The handoff deliberately excludes <code>.venv</code>, container filesystems, asset manifests, and model caches. Reinstall the destination with <code>npm run setup -- --locked-cpu</code>, which selects <code>torch==2.10.0</code> CPU plus the exact direct pins, and regenerate assets from immutable revisions rather than transferring platform-bound state. Never run setup inside NGC.</p>
+        </section>
+        <section>
+          <h2>Verification layers</h2>
+          <p><code>npm test</code> runs Node.js schema/report/orchestration tests and Python unit tests. <code>npm run smoke:offline</code> exercises a small local fixture without claiming scientific validity. Package checksum verification establishes distribution integrity. Documentation checks validate local links, partials, Mermaid inclusion, specs-loader targets, and the site over HTTP.</p>
+          <p><a href="specsLoader.html?spec=DS001-coding-style.md">DS001</a> requires focused acceptance and rejection tests whenever configuration, preparation, routing, checkpoints, evaluation, benchmarks, reporting, or provenance change. A test that only accepts a good artifact is incomplete for a fail-closed boundary.</p>
+        </section>
+        <section>
+          <h2>Publication wording</h2>
+          <p>A completed report may support statements of the form “under the frozen TinyStories and commodity-x86 protocol, the named VSA-PathMoE checkpoint met or failed the registered gates against the pinned TinyStories-8M revision.” It does not support “VSA beats LLMs,” “new MoE proven,” or “7 MB memory” without the exact qualifying measurements.</p>
+          <div class="callout callout--warning">
+            <p>Until all required artifacts exist, publish the design and protocol as a reproducible hypothesis. Do not convert absence of evidence into a zero, a pass, or a performance claim.</p>
+          </div>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

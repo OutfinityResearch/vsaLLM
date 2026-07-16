@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Controlled comparison protocol for VSA-PathMoE and TinyStories checkpoints.">
+  <title>Protocol | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / Protocol</p>
+        <p class="kicker">Preregistered evidence, not baseline shopping</p>
+        <h1>Comparison protocol</h1>
+        <p class="hero__lede">Quality, speed, memory, and mechanism are measured with distinct artifacts and joined only after provenance validation.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>Questions and comparison roles</h2>
+          <p>The primary question is whether VSA-PathMoE is non-inferior in conditional bits per UTF-8 byte to <code>roneneldan/TinyStories-8M</code> while improving CPU latency, generated-byte throughput, and resident memory under the same raw workload. TinyStories-33M is a predeclared larger-capacity anchor. The optional 1M/3M/8M/33M matrix describes scale; it cannot replace the primary baseline after results are known.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Comparator</th><th>Role</th><th>What it can establish</th></tr></thead>
+              <tbody>
+                <tr><td>TinyStories-8M</td><td>Primary external baseline</td><td>Scoped quality, CPU, and memory gates</td></tr>
+                <tr><td>TinyStories-33M</td><td>Larger external anchor</td><td>Descriptive quality–latency–memory position</td></tr>
+                <tr><td>TinyStories-1M/3M</td><td>Scaling diagnostics</td><td>Context for active-size and smaller points</td></tr>
+                <tr><td>Dense active control</td><td>Matched active parameter budget</td><td>Whether sparsity helps beyond a 1.76M dense model</td></tr>
+                <tr><td>Dense total control</td><td>Matched total parameter budget</td><td>Whether conditional compute helps beyond a 10.03M dense model</td></tr>
+                <tr><td>Ablations</td><td>Same sparse checkpoint</td><td>Whether the selected expert and route contribute</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section>
+          <h2>Shared raw text and separated splits</h2>
+          <p>Training uses <code>TinyStories-train.txt</code>. The official validation file is split deterministically by a stable story hash: one half selects the custom checkpoint and the other is the held-out test set. The same held-out raw prefix and continuation are scored by every tokenizer. Conditional negative log likelihood is accumulated only over continuation tokens and divided by the continuation's UTF-8 byte count.</p>
+          <p>The raw boundary is moved to nearby whitespace so GPT-style leading-space pieces and SentencePiece whitespace pieces do not straddle the prefix/continuation boundary. Preparation fails if the custom tokenization of <code>prefix + continuation</code> differs from concatenating the separately tokenized pieces. This makes conditional bits per byte comparable despite different vocabularies.</p>
+          <pre class="mermaid">
+flowchart TD
+  T[TinyStories train] --> P[Tokenizer and router fitting]
+  T --> TR[Custom training records]
+  V[TinyStories valid] --> H{Stable story hash}
+  H -->|validation half| S[Checkpoint selection only]
+  H -->|test half| E[Held-out quality]
+  E --> C[Same raw continuations]
+  C --> M1[Custom tokenizer/model]
+  C --> M2[Official tokenizer/model]
+  M1 --> B[Conditional NLL per UTF-8 byte]
+  M2 --> B
+          </pre>
+        </section>
+        <section>
+          <h2>Context policy</h2>
+          <p>The custom decoder's native block is 256 tokens. The official TinyStories artifacts declare up to 2,048 positions, while the configured historical training support is 512. Primary quality uses each model's declared native comparison context: 256 for the custom checkpoint and 512 for official checkpoints. A separate 256-token common-context diagnostic isolates context-window effects.</p>
+          <p>Those two views are both retained. The report must never reinterpret an artifact's 2,048 positional capacity as evidence that it trained on 2,048-token sequences. The official revision, effective trained context, and raw artifact-config context are separate provenance fields.</p>
+        </section>
+        <section>
+          <h2>Decision gates</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Criterion</th><th>Configured threshold</th><th>Reported statistic</th></tr></thead>
+              <tbody>
+                <tr><td>Conditional BPB non-inferiority</td><td>custom/8M ≤ 1.02</td><td>Upper 95% paired story-bootstrap ratio</td></tr>
+                <tr><td>End-to-end CPU speed</td><td>≥ 1.20×</td><td>Minimum lower 95% bound across prompt samples</td></tr>
+                <tr><td>Decode CPU speed</td><td>≥ 1.20×</td><td>Minimum lower 95% bound across prompt samples</td></tr>
+                <tr><td>Generated-byte throughput</td><td>≥ 1.20×</td><td>Minimum lower 95% bound across prompt samples</td></tr>
+                <tr><td>Resident memory</td><td>custom/8M ≤ 0.80</td><td>Conservative maximum of measured pre-request load ratio and exact persistent-state maximum ratio</td></tr>
+                <tr><td>HellaSwag normalized accuracy</td><td>delta ≥ −0.01</td><td>Secondary full-validation diagnostic when configured as zero examples</td></tr>
+                <tr><td>Expert contribution</td><td>loss gain ≥ 0.005</td><td>Shared-only loss minus full loss</td></tr>
+                <tr><td>Routing contribution</td><td>loss gain ≥ 0.005</td><td>Permuted-route loss minus full loss</td></tr>
+                <tr><td>Blind preference</td><td>custom ≥ 0.45</td><td>Frozen A/B review packet</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>A missing value is <code>pending</code> or <code>unavailable</code>, never a pass. The full verdict also requires artifact identity and workload compatibility. Dense controls are mandatory descriptive evidence and their artifacts, provenance, workloads, CPU environments, and parameter budgets are validated fail-closed. No preregistered matched-control performance threshold contributes to the core or final verdict.</p>
+        </section>
+        <section>
+          <h2>Hardware separation and fairness</h2>
+          <p>All custom and official quality artifacts for the official run are produced under the frozen DGX profile with CUDA BF16. CPU deployment artifacts are produced in independent processes on the same commodity x86 host, with CPU FP32, the same thread count, identical deterministic cases, equal warmup and repetition counts, KV caching, and 64 decode steps.</p>
+          <p>The custom runtime may use its documented fused shared-plus-expert kernel because this is the implemented deployment path. The report nevertheless publishes model bytes, router arrays, load time, cold and warm route-cache rows, and raw timing repetitions. Timing on the DGX Spark ARM host may diagnose that machine; it cannot satisfy the configured <code>x86_64</code> ordinary-CPU claim.</p>
+          <div class="callout callout--warning">
+            <p><strong>Claim boundary.</strong> Official checkpoints are external baselines with different tokenizers, backbones, and training histories. They can support an executed system-level comparison, not a causal statement that VSA routing alone caused a difference.</p>
+          </div>
+        </section>
+        <section>
+          <h2>Artifact join</h2>
+          <p>The report accepts evaluation schema version 2 and benchmark schema version 3, selects the configured model list and primary ID exactly, recomputes workload hashes, verifies checkpoint and revision provenance, and requires the primary CPU device, dtype, architecture, and thread point. The generated comparison object carries each official model in frozen order; top-level verdicts are copied only from the primary 8M row.</p>
+          <p>When <code>comparison.matched_control_profiles</code> is configured, reporting also requires each named control's frozen config, training summary, custom evaluation, and custom CPU artifacts at the main run's exact thread set. It validates shared prepared semantics and runtime identity, then reports paired conditional-BPB uncertainty, HellaSwag delta, CPU bootstrap ratios, and measured/persistent-state memory ratios. These values are descriptive and do not create an undeclared pass threshold.</p>
+          <p>See <a href="evaluation.html">Evaluation and reporting</a> for metric construction and <a href="reproducibility.html">Reproducibility</a> for the archive contract.</p>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

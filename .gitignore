@@ -141,3 +141,22 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Python and generated experiment state
+.venv/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/*
+!data/prepared/
+data/prepared/*
+!data/prepared/.gitkeep
+runs/*
+!runs/.gitkeep
+results/*
+!results/.gitkeep
+handoff/*
+!handoff/.gitkeep
+.DS_Store
+.agents

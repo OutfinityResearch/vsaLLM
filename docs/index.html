@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Technical documentation for the VSA-PathMoE controlled TinyStories benchmark.">
+  <title>VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / Overview</p>
+        <p class="kicker">Controlled small-model research system</p>
+        <h1>VSA-PathMoE Documentation</h1>
+        <p class="hero__lede">A reproducible test of request-level VSA routing over very small tensor experts, compared with official TinyStories checkpoints and matched dense controls.</p>
+        <p class="status-line">Protocol implemented; final DGX and commodity-CPU result pending.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>The proposition under test</h2>
+          <p>VSA-PathMoE keeps a compact Transformer backbone resident and selects one narrow feed-forward micro-expert per request. A deterministic Vector Symbolic Architecture router reads only the causal conditioning prefix, assigns one of 64 routes, and holds that route for the continuation. The implementation therefore separates inexpensive symbolic coordination from the tensor path used to predict tokens.</p>
+          <p>The repository does not yet demonstrate that this design beats a tensor-only language model. It supplies a fail-closed experiment that can establish or reject the narrower TinyStories claim. A positive statement requires quality non-inferiority to the official 8M checkpoint, robust CPU speed and resident-memory advantages, real route and expert contribution, dense-control evidence, and a completed blind review.</p>
+          <dl class="metric-strip">
+            <div><dt>Total parameters</dt><dd>10,029,504</dd></div>
+            <div><dt>Active/request</dt><dd>1,755,840</dd></div>
+            <div><dt>Routes</dt><dd>64</dd></div>
+            <div><dt>Active FP32 math</dt><dd>7.02 MB</dd></div>
+          </dl>
+          <div class="callout callout--warning">
+            <p><strong>Arithmetic activity is not process memory.</strong> The complete expert bank remains resident. The report distinguishes total parameter bytes, active arithmetic bytes, load-attributable USS or RSS, and peak process RSS.</p>
+          </div>
+        </section>
+        <section>
+          <h2>System boundary</h2>
+          <pre class="mermaid">
+flowchart LR
+  A[Raw TinyStories] --> B[Prepared format v5]
+  B --> C[VSA router]
+  B --> D[SentencePiece tokens]
+  C --> E[One request route]
+  D --> F[Small Transformer]
+  E --> F
+  F --> G[Checkpoint v2]
+  G --> H[Quality on DGX CUDA BF16]
+  G --> I[CPU FP32 benchmark on x86]
+  H --> J[Validated report]
+  I --> J
+  K[Official 8M and 33M] --> H
+  K --> I
+  L[Matched dense controls] --> J
+          </pre>
+          <p>Training and quality evaluation are scheduled on NVIDIA DGX Spark with CUDA BF16. Deployment timing and memory are separate CPU FP32 experiments on a commodity <code>x86_64</code> host at 1, 4, and 8 threads. This split prevents the accelerator used to train the custom model from being confused with the hardware named by the CPU-efficiency claim.</p>
+        </section>
+        <section>
+          <h2>Repository structure and authority</h2>
+          <div class="directory-tree" aria-label="Repository structure">
+            <ul>
+              <li><code>config/</code> — base contract and frozen runtime profiles</li>
+              <li><code>python/vsa_bench/</code> — data, router, model, training, evaluation, and benchmark</li>
+              <li><code>scripts/</code> — orchestration, reporting, blind review, and verification</li>
+              <li><code>tests/</code> — Node.js and Python acceptance and rejection tests</li>
+              <li><code>docs/</code> — this maintained long-form technical site</li>
+              <li><code>docs/specs/</code> — authoritative Design Specifications</li>
+              <li><code>.agents/skills/</code> — imported agent tooling, kept outside the host documentation surface</li>
+            </ul>
+          </div>
+          <p>The versioned Design Specifications are the documented source of truth. <a href="specsLoader.html?spec=DS001-coding-style.md">DS001</a> governs coding style, artifact compatibility, source layout, and modular testing. A source change that alters behavior, interfaces, architecture, workflow, or constraints must update the affected specification and HTML chapter together.</p>
+          <p>The local skills under <code>.agents/skills/</code> assist repository work but are not product runtime dependencies. Their portable instructions and examples remain inside their own folders. <code>AGENTS.md</code> carries the synchronized skill catalog and future-agent reading order.</p>
+        </section>
+        <section>
+          <h2>Imported skill catalog</h2>
+          <p>The current agent-tooling catalog is <code>achilles-specs</code>, <code>antropic-skill-build</code>, <code>article-build</code>, <code>create-akus</code>, <code>cskill-build</code>, <code>dgskill-build</code>, <code>gamp-specs</code>, <code>manage-ploinky-agents</code>, <code>oskill-build</code>, and <code>review-specs</code>. These skills support project bootstrap, specification review, portable skill forms, article generation, knowledge-unit construction, and agent operations.</p>
+          <p>This repository consumes them downstream, so their detailed contracts remain in their own <code>SKILL.md</code> files rather than becoming host-project HTML chapters or DS specifications. When that folder set changes, update <code>AGENTS.md</code>, this catalog statement, and the generated specification matrix in the same change.</p>
+        </section>
+        <section>
+          <h2>Runtime defaults that define the comparison</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Axis</th><th>Frozen default</th><th>Reason</th></tr></thead>
+              <tbody>
+                <tr><td>Primary baseline</td><td><code>roneneldan/TinyStories-8M</code></td><td>External quality and efficiency gate</td></tr>
+                <tr><td>Capacity anchor</td><td><code>roneneldan/TinyStories-33M</code></td><td>Descriptive Pareto comparison, not baseline shopping</td></tr>
+                <tr><td>Custom context</td><td>256 tokens</td><td>Native architectural limit</td></tr>
+                <tr><td>Official trained context</td><td>512 tokens</td><td>Declared separately from the 2,048-position artifact field</td></tr>
+                <tr><td>CPU workload</td><td>128/320/512-character targets; 64 decoded tokens</td><td>Multiple deterministic prompt shapes</td></tr>
+                <tr><td>Primary CPU point</td><td>FP32, 1 thread, 512-character target</td><td>Preregistered ordinary-CPU interpretation</td></tr>
+                <tr><td>Seed</td><td><code>20260716</code></td><td>Stable preparation, sampling, and bootstrap construction</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>TinyStories is appropriate because its authors specifically study coherent language generation below ten million parameters. That scope is also a limitation: even a successful result remains a TinyStories result, not evidence of general language-model superiority. See the <a href="sources.html">primary sources</a> and <a href="protocol.html">comparison protocol</a>.</p>
+        </section>
+        <section>
+          <h2>Verification model</h2>
+          <p>Tests exercise both success and rejection paths for prepared-data identity, checkpoint compatibility, model-list provenance, workload manifests, blind packets, benchmark runtime selection, and report gates. Offline smoke proves plumbing only. Full scientific artifacts must come from a clean, frozen run and are validated again when the report is assembled.</p>
+          <p>The documentation itself is served and checked through the project-local verification scripts. Because headers, footers, and specifications are loaded with <code>fetch()</code>, open this site through HTTP rather than directly from a <code>file:</code> URL.</p>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

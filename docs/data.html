@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Data acquisition and prepared-format contract for VSA-PathMoE.">
+  <title>Data | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / Data</p>
+        <p class="kicker">Immutable sources, path-independent semantics</p>
+        <h1>Data and preparation</h1>
+        <p class="hero__lede">Prepared format version 5 binds raw-data identity, tokenizer semantics, routing semantics, and deterministic splits without binding them to a workstation path.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>Source resolution</h2>
+          <p>The acquisition stage resolves TinyStories dataset and model revisions before downloading. The official DGX profile already names immutable revisions for the dataset, TinyStories-8M, TinyStories-33M, and HellaSwag. The resulting <code>data/assets_dgx_spark.json</code> records requested revisions, resolved SHAs, snapshot paths, and file identities. Evaluation and benchmarking validate the complete official-model list, order, ID, requested revision, resolved artifact, and trained context.</p>
+          <p>The scientific dataset roles are fixed: <code>TinyStories-train.txt</code> supplies tokenizer/router fitting and custom training; <code>TinyStories-valid.txt</code> supplies deterministic validation and test halves. <code>Evaluation prompts.yaml</code> is the generation prompt source. Official model snapshots are external baselines, not training inputs for the custom model.</p>
+          <pre><code>npm run download:full -- --profile dgx_spark
+npm run prepare -- --profile dgx_spark</code></pre>
+          <p>Downloads and prepared data should reside on persistent storage mounted into the DGX container. Secrets and mutable caches are operational inputs; resolved manifest identities are scientific artifacts.</p>
+          <p>For every profile whose name starts with <code>dgx_spark</code>, <code>prepare</code> invokes the strict DGX doctor internally and stops if any preflight check fails. Running the doctor manually is useful evidence, but it cannot be bypassed by calling preparation directly.</p>
+        </section>
+        <section>
+          <h2>Format version 5 pipeline</h2>
+          <pre class="mermaid">
+flowchart TD
+  A[Resolved dataset manifest] --> B[Stream raw stories]
+  B --> C[Reservoir samples]
+  C --> D[Lossless SentencePiece BPE]
+  C --> E[VSA router fit on prefixes]
+  B --> F[Whitespace-safe prefix split]
+  D --> G[Token arrays and offsets]
+  E --> H[Route arrays and route indexes]
+  F --> G
+  F --> H
+  G --> I[Prepared format v5]
+  H --> I
+  I --> J[Signature + tokenizer SHA + router SHA]
+          </pre>
+          <p>Preparation streams the multi-gigabyte source instead of loading it into memory. It takes deterministic reservoir samples for a 2,048-piece SentencePiece BPE tokenizer and for the router. Tokenization uses identity normalization, byte fallback, no dummy prefix, preserved whitespace, and explicit BOS/EOS IDs. A sample round-trip audit must reconstruct source text exactly; otherwise bits per byte would be ill-defined.</p>
+          <p>The request prefix is chosen near 96 characters at a stable whitespace boundary, and the continuation retains its separator. Only the prefix feeds the router. Each record stores BOS, prefix, continuation, EOS, its prefix-token length, route, and continuation target count. Training loss masks the conditioning prefix.</p>
+        </section>
+        <section>
+          <h2>On-disk representation</h2>
+          <div class="directory-tree" aria-label="Prepared data structure">
+            <ul>
+              <li><code>data/prepared/dgx_spark/PREPARED.json</code> — completion marker and full metadata</li>
+              <li><code>metadata.json</code> — format, signatures, hashes, split and route statistics</li>
+              <li><code>tinystories_bpe.model</code> — lossless custom tokenizer</li>
+              <li><code>router.npz</code> — byte vectors, roles, and product prototypes</li>
+              <li><code>indexed/train/</code>, <code>validation/</code>, <code>test/</code> — uint16 tokens and NumPy indexes</li>
+              <li><code>eval/validation.jsonl</code>, <code>test.jsonl</code> — raw prefix/continuation evaluation rows</li>
+            </ul>
+          </div>
+          <p>Token streams use unsigned 16-bit values; offsets, prefix lengths, routes, target counts, route-sorted record order, and route boundaries are stored separately. This supports route-aware sampling without materializing all stories in memory. Per-split metadata records story counts, target tokens, active routes, route counts, and entropy.</p>
+        </section>
+        <section>
+          <h2>Path-independent compatibility</h2>
+          <p>The preparation signature hashes format version 5, project seed, semantic data configuration, dataset ID and resolved SHA, and the selected source filenames. It intentionally excludes local cache and mount paths. A prepared store may therefore move from the DGX host to an x86 benchmark host without changing token or route meaning. Metadata separately records the complete preparation environment, runtime-source identity, container tag, base digest, and derived image ID, so portability does not erase provenance.</p>
+          <p>A checkpoint embeds the prepared metadata. Loading, resuming, evaluating, and benchmarking fail closed unless the preparation signature, tokenizer model SHA, router artifact SHA, and routing mode are present and match. A legacy checkpoint without these fields is unverifiable and must be retrained.</p>
+          <div class="callout callout--danger">
+            <p><strong><code>--force</code> is destructive.</strong> It removes and rebuilds the selected prepared directory. Do not rebuild <code>data/prepared/dgx_spark</code> while another stage reads it, and do not reuse checkpoints whose embedded preparation identity names the old store.</p>
+          </div>
+        </section>
+        <section>
+          <h2>Sharing across sparse and dense profiles</h2>
+          <p><code>dgx_spark</code>, <code>dgx_spark_dense_active</code>, and <code>dgx_spark_dense_total</code> intentionally point to <code>data/prepared/dgx_spark</code>. Their source revisions and data configuration are identical, so one preparation supplies the same tokenizer, raw records, and split identities. Dense models map every stored route to route zero at model execution; they do not require a different text corpus.</p>
+          <p>Only the sparse profile should create the shared store in the official workflow. Freeze and archive <code>PREPARED.json</code>, <code>metadata.json</code>, tokenizer SHA, router SHA, and the asset manifest before any of the three training runs.</p>
+          <p>On the x86 deployment host, <code>npm run download:deployment -- --profile dgx_spark</code> regenerates prompts and official-model snapshots without the train corpus or HellaSwag. That manifest is intentionally insufficient for preparation. Never rerun <code>prepare</code> or <code>train</code> for a <code>dgx_spark*</code> profile on x86; verify the transferred prepared bytes through the handoff manifest instead.</p>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

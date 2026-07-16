@@ -1,0 +1,10 @@
+{
+  "paths": {"assets_manifest": "data/assets_full.json"},
+  "runtime": {"device": "cpu", "dtype": "fp32", "threads": 8},
+  "data": {"prepared_dir": "data/prepared/full"},
+  "model": {
+    "routing_mode": "fixed_dense",
+    "shared_hidden": 3719,
+    "expert_hidden": 57
+  }
+}

@@ -1,0 +1,6 @@
+*
+!requirements.txt
+!requirements-dgx.txt
+!containers/
+!containers/dgx-spark/
+!containers/dgx-spark/Dockerfile

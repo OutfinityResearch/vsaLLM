@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Commodity CPU latency and resident-memory benchmark for VSA-PathMoE.">
+  <title>CPU and memory | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / CPU and memory</p>
+        <p class="kicker">Deployment evidence on commodity x86</p>
+        <h1>CPU speed and memory</h1>
+        <p class="hero__lede">The primary efficiency claim is tested in separate CPU FP32 processes with a shared deterministic workload, explicit runtime identity, and measured resident memory.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>Cross-host benchmark stage</h2>
+          <p>The final checkpoint and CUDA/BF16 evaluation artifacts are produced on DGX Spark. The checkpoint, frozen resolved configuration, prepared format-v5 store, evaluation objects, and immutable asset identities are then transferred to a commodity <code>x86_64</code> system. Official snapshots may be mirrored into a local cache, but their IDs and resolved revisions must remain identical.</p>
+          <p>Benchmark runtime fields are an explicit exception to training/evaluation freeze: device, dtype, and thread count may change for benchmark-only commands and are recorded in every artifact. All semantic fields remain frozen. First inspect the host topology, then select eight logical CPU IDs that represent eight distinct physical <code>(socket,core)</code> pairs without selected simultaneous-multithreading siblings. Every process must inherit the same affinity:</p>
+          <pre><code>CPUSET=&lt;eight-comma-separated-logical-CPU-ids&gt;
+
+taskset -c "$CPUSET" npm run benchmark:matrix -- --profile dgx_spark \
+  --device cpu --dtype fp32
+
+taskset -c "$CPUSET" npm run benchmark:custom:matrix -- \
+  --profile dgx_spark_dense_active --device cpu --dtype fp32
+taskset -c "$CPUSET" npm run benchmark:custom:matrix -- \
+  --profile dgx_spark_dense_total --device cpu --dtype fp32</code></pre>
+          <p>With no <code>--threads</code> override, orchestration executes 1, 4, and 8 worker threads. Those values do not resize the eight-logical-CPU process affinity. Custom and every configured official model run in independent Python processes, reducing load-order and allocator contamination. The custom-only control matrices do not rerun official baselines.</p>
+          <p>All three DGX profiles freeze <code>benchmark.required_cpu_affinity_logical_cpus=8</code> and <code>benchmark.require_distinct_physical_cores=true</code>. The primary report requires the same thread set and exact affinity/topology/governor pairing for sparse, official, and dense-control artifacts. It also validates each control's resolved config, training summary, checkpoint provenance, preparation signature, workload, runtime source, and CPU environment before producing descriptive control ratios.</p>
+        </section>
+        <section>
+          <h2>Deterministic multi-prompt workload</h2>
+          <p>The benchmark derives four stable prompt samples at each 128, 320, and 512-character target from prepared held-out text. Each case carries its prompt hash, actual character and UTF-8 byte counts, and target. The canonical workload object contains 12 cases and a SHA-256 recomputed by the report for every model.</p>
+          <p>Each process performs five warmups and 30 measured repetitions, with 64 generated tokens and KV caching. Raw rows separate prompt prefill, decode, and end-to-end time and preserve generated token and UTF-8 byte counts. Both cold and warm route-cache cases are reported; the registered speed gates use warm-route rows because repeated deployment requests may reuse prepared fused route tensors.</p>
+          <pre class="mermaid">
+flowchart LR
+  W[12 hashed cases] --> C[Custom process]
+  W --> O[Official process]
+  C --> C1[5 warmups]
+  O --> O1[5 warmups]
+  C1 --> C2[30 raw rows × 64 tokens]
+  O1 --> O2[30 raw rows × 64 tokens]
+  C2 --> V[Manifest and runtime validation]
+  O2 --> V
+  V --> B[Independent bootstrap of medians]
+          </pre>
+          <p>Token throughput alone is not tokenizer-neutral. The protocol therefore reports end-to-end latency, decode tokens per second, and end-to-end generated UTF-8 bytes per second. A speed gate requires the minimum lower 95% bootstrap bound across prompt samples to reach 1.20×, preventing one favorable prompt from deciding the result.</p>
+        </section>
+        <section>
+          <h2>Runtime controls</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Control</th><th>Primary value</th><th>Validation</th></tr></thead>
+              <tbody>
+                <tr><td>Architecture</td><td><code>x86_64</code></td><td>Artifact environment must canonicalize to configured value</td></tr>
+                <tr><td>Device and dtype</td><td><code>cpu</code>, <code>fp32</code></td><td>Model metadata must match exactly</td></tr>
+                <tr><td>Process affinity</td><td>Exactly 8 logical CPU IDs</td><td>Complete sysfs mapping to 8 distinct physical pairs; no selected SMT siblings</td></tr>
+                <tr><td>Worker threads</td><td>1 primary; 4 and 8 scaling views</td><td>Runtime-specific filenames and rows; affinity remains fixed at 8 CPUs</td></tr>
+                <tr><td>Prompt point</td><td>512-character target primary</td><td>All four samples still participate</td></tr>
+                <tr><td>Kernel mode</td><td>Custom <code>fused</code></td><td>Recorded with model and route-cache metadata</td></tr>
+                <tr><td>Cache</td><td>KV cache for all models</td><td>Same decode length and workload</td></tr>
+                <tr><td>Governor policy</td><td>Operator-selected and recorded</td><td>Exact paired equality; the code imposes no particular value</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Before adapter or model loading, each custom and official benchmark snapshots the current process affinity and Linux sysfs topology. Validation requires exactly eight unique affinity IDs, complete topology rows, eight distinct <code>(physical_package_id,core_id)</code> pairs, and no selected SMT siblings. An invalid host selection fails before model memory or initialization can contaminate a measurement.</p>
+          <p>Every artifact stores <code>environment.cpu_topology</code>. Each <code>logical_cpus[]</code> row contains <code>logical_cpu</code>, <code>physical_package_id</code>, <code>core_id</code>, and <code>thread_siblings_list</code>. The summary contains <code>complete</code>, <code>affinity_logical_cpu_count</code>, <code>affinity_physical_core_count</code>, and <code>affinity_contains_smt_siblings</code>.</p>
+          <p>The report independently revalidates that structure for every selected sparse, official, and control artifact, then requires exact paired affinity, topology, and observed-governor values at each worker-thread point. It surfaces topology in the comparison JSON, Markdown report, HTML report, and CPU CSV. The code does not prescribe a governor value; the operator fixes and records one stable policy, and report pairing prevents it from changing between compared processes. Retain independent <code>lscpu</code> and governor-control records with the publication bundle.</p>
+        </section>
+        <section>
+          <h2>Four different memory quantities</h2>
+          <p>“Active parameters” is an arithmetic count, not a residency measurement. The custom process loads the complete 10.03M parameter bank even though a request multiplies through only 1.76M parameters. The benchmark takes process snapshots before model load, after load, and after the workload, using RSS and, where the platform supplies them, USS and PSS.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Quantity</th><th>Meaning</th><th>Use</th></tr></thead>
+              <tbody>
+                <tr><td>Total/resident parameter bytes</td><td>Actual parameter tensors in selected CPU FP32 model</td><td>Base of exact persistent-state accounting</td></tr>
+                <tr><td>Active arithmetic bytes</td><td>Parameters multiplied for one selected route</td><td>Compute-path description only</td></tr>
+                <tr><td>Load delta</td><td><code>after_load − before_load</code>, before the first request</td><td>Measured process-attributable residency candidate</td></tr>
+                <tr><td>Persistent-state maximum</td><td>Parameters, persistent buffers, router arrays, and maximum fused-route cache</td><td>Exact implementation-state upper accounting</td></tr>
+                <tr><td>Total/peak RSS</td><td>Runtime, allocator, parameters, caches, and workload growth</td><td>Diagnostic deployment footprint</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>The measured component first uses a positive comparable USS load delta for both processes and otherwise a positive RSS load delta. Because this snapshot occurs before the first request, it excludes fused-route-cache population. A second component divides each model's exact <code>persistent_model_state_max_bytes</code>, which includes the custom router arrays and maximum four-route fused cache. The gate uses the larger available ratio, so allocator behavior cannot hide durable model state. The custom/8M value must be at most 0.80. Peak and total RSS remain visible diagnostics, while router and cache terms remain separately auditable.</p>
+        </section>
+        <section>
+          <h2>Interpreting a result</h2>
+          <p>A positive CPU result requires all prompt samples, correct runtime metadata, raw repetitions, confidence intervals, and a valid resident-memory source. It establishes a system-level result for this implementation, frozen workload, official revision, and executed CPU. It does not establish that every VSA router is faster, that the custom model uses only 7 MB of RAM, or that training on a GPU contributed to CPU efficiency.</p>
+          <div class="callout callout--warning">
+            <p>DGX Spark has an ARM host. Timing there can be archived as a platform-specific diagnostic but cannot satisfy the configured ordinary-CPU gate, which explicitly requires commodity <code>x86_64</code>.</p>
+          </div>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

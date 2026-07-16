@@ -1,0 +1,12 @@
+# Exact direct experiment dependencies for the staged DGX/x86 protocol.
+# PyTorch/CUDA come from the immutable NGC image on DGX; the x86 setup command
+# installs the separately pinned official CPU wheel before reading this file.
+numpy==2.4.1
+sentencepiece==0.2.2
+PyYAML==6.0.2
+psutil==7.0.0
+huggingface_hub==0.36.0
+transformers==4.57.6
+datasets==4.8.5
+safetensors==0.7.0
+pytest==9.1.1

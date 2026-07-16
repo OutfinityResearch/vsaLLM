@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vsa-tinystories-benchmark"
+version = "1.0.0"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=2.0,<3",
+  "sentencepiece>=0.2.0,<0.3",
+  "PyYAML>=6.0,<7",
+  "psutil>=6.0,<8",
+  "huggingface_hub>=0.28,<2",
+  "transformers>=4.46,<5",
+  "datasets>=3.2,<5",
+  "safetensors>=0.4,<1"
+]
+
+[tool.setuptools]
+package-dir = {"" = "python"}
+
+[tool.setuptools.packages.find]
+where = ["python"]

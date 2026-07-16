@@ -1,0 +1,62 @@
+{
+  "paths": {"assets_manifest": "data/assets_smoke.json"},
+  "sources": {
+    "official_models": [
+      {
+        "id": "roneneldan/TinyStories-8M",
+        "revision": "main",
+        "trained_context_length": 512
+      }
+    ]
+  },
+  "runtime": {"device": "cpu", "dtype": "fp32", "threads": 2},
+  "data": {
+    "prepared_dir": "data/prepared/smoke",
+    "use_valid_as_train": true,
+    "max_train_stories": 2000,
+    "max_eval_stories": 500,
+    "tokenizer_sample_stories": 1000,
+    "router_sample_stories": 1000,
+    "vocab_size": 512,
+    "vsa_dimension": 128,
+    "router_product_k": 4,
+    "router_kmeans_iterations": 4
+  },
+  "model": {
+    "block_size": 128,
+    "d_model": 96,
+    "n_layer": 2,
+    "n_head": 4,
+    "shared_hidden": 64,
+    "expert_hidden": 24
+  },
+  "training": {
+    "batch_size": 4,
+    "gradient_accumulation": 1,
+    "joint_target_tokens": 250000,
+    "expert_specialization_target_tokens": 50000,
+    "eval_every_target_tokens": 100000,
+    "eval_batches": 4,
+    "eval_batch_size": 4,
+    "log_every_steps": 10
+  },
+  "evaluation": {
+    "test_stories": 50,
+    "common_context_length": 128,
+    "scoring_stride": 64,
+    "prompt_count": 4,
+    "hellaswag_examples": -1,
+    "ablation_batches": 4,
+    "ablation_batch_size": 4,
+    "generation": {"samples_per_prompt": 1, "max_new_tokens": 32}
+  },
+  "benchmark": {
+    "common_context_length": 128,
+    "prompt_character_targets": [64, 128],
+    "decode_tokens": 8,
+    "warmup_repeats": 1,
+    "repeats": 3,
+    "prompt_samples_per_target": 1,
+    "primary_prompt_character_target": 128
+  }
+}

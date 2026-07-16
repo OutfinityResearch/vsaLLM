@@ -1,0 +1,36 @@
+{
+  "paths": {"assets_manifest": "data/assets_dgx_spark.json"},
+  "sources": {
+    "dataset_revision": "f54c09fd23315a6f9c86f9dc80f725de7d8f9c64",
+    "official_models": [
+      {
+        "id": "roneneldan/TinyStories-8M",
+        "revision": "8612e3b15c66ffa94eaa6ee0de5c96edd2d630af",
+        "trained_context_length": 512
+      },
+      {
+        "id": "roneneldan/TinyStories-33M",
+        "revision": "2ad0a164221b7c4d21cac7c46aec74f6f98dbfc8",
+        "trained_context_length": 512
+      }
+    ],
+    "hellaswag_revision": "218ec52e09a7e7462a5400043bb9a69a41d06b76"
+  },
+  "runtime": {"device": "cuda", "dtype": "bf16", "threads": 4},
+  "benchmark": {
+    "required_cpu_affinity_logical_cpus": 8,
+    "require_distinct_physical_cores": true
+  },
+  "data": {"prepared_dir": "data/prepared/dgx_spark"},
+  "model": {
+    "routing_mode": "fixed_dense",
+    "shared_hidden": 128,
+    "expert_hidden": 57
+  },
+  "training": {
+    "batch_size": 32,
+    "gradient_accumulation": 2,
+    "checkpoint_every_target_tokens": 2000000,
+    "eval_batch_size": 16
+  }
+}

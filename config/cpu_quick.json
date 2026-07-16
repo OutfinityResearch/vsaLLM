@@ -1,0 +1,17 @@
+{
+  "paths": {"assets_manifest": "data/assets_cpu_quick.json"},
+  "runtime": {"device": "cpu", "dtype": "fp32", "threads": 8},
+  "data": {
+    "prepared_dir": "data/prepared/cpu_quick",
+    "max_train_stories": 100000,
+    "max_eval_stories": 5000,
+    "tokenizer_sample_stories": 50000,
+    "router_sample_stories": 50000
+  },
+  "training": {
+    "joint_target_tokens": 20000000,
+    "expert_specialization_target_tokens": 5000000,
+    "eval_every_target_tokens": 2500000
+  },
+  "evaluation": {"test_stories": 500, "hellaswag_examples": 200}
+}

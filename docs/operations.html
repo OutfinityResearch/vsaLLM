@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Operational commands, diagnostics, and failure recovery for VSA-PathMoE.">
+  <title>Operations | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / Operations</p>
+        <p class="kicker">Fail early, preserve evidence</p>
+        <h1>Operations and diagnostics</h1>
+        <p class="hero__lede">Operational commands are staged around immutable inputs and explicit preflight checks; recovery preserves the same experiment rather than mutating it.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>Local engineering checks</h2>
+          <pre><code>npm run setup -- --locked-cpu
+npm test
+npm run smoke:offline
+npm run docs:verify
+npm run docs:serve-check</code></pre>
+          <p><code>--locked-cpu</code> installs <code>torch==2.10.0</code> from the CPU index and the exact direct pins from <code>requirements-dgx.txt</code>. The offline smoke profile uses fixture data and tiny budgets to verify command plumbing. It does not download official checkpoints and cannot produce a scientific comparison. Use <code>npm run doctor -- --profile &lt;profile&gt;</code> to inspect resolved paths, runtime dependency versions, environment metadata, and parameter accounting before expensive work. Never run setup inside the NGC container.</p>
+          <p><code>./fileSizesCheck.sh</code> is the project copy of the GAMP size and long-line checker. Its findings are maintainability signals, not model-quality tests.</p>
+        </section>
+        <section>
+          <h2>Strict DGX preflight</h2>
+          <p><code>npm run doctor:dgx -- --profile dgx_spark --strict</code> exits unsuccessfully unless every implemented check passes. Run it inside the intended derived container, with the repository mounted and its identity variables exported.</p>
+          <p>Before preflight, use NVIDIA's supplied 240 W adapter, run the container with GPU access and <code>--ipc=host</code>, map the host UID/GID, and provide writable <code>HOME</code> and <code>HF_HOME</code> paths. These are manual operational preconditions; the current doctor records the environment but cannot identify the physical power adapter.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Check</th><th>Required observation</th></tr></thead>
+              <tbody>
+                <tr><td>Host and accelerator</td><td>ARM64 host, CUDA available, BF16 supported, NVIDIA GB10 with compute capability 12.1</td></tr>
+                <tr><td>Capacity</td><td>At least 110,000,000,000 system-memory bytes and 20,000,000,000 free disk bytes</td></tr>
+                <tr><td>Source state</td><td>Known clean Git worktree</td></tr>
+                <tr><td>Container</td><td>Running inside a container with tag identity <code>nvcr.io/nvidia/pytorch:25.11-py3</code></td></tr>
+                <tr><td>Immutable images</td><td>Valid base RepoDigest in <code>VSA_CONTAINER_IMAGE_DIGEST</code> and derived image ID in <code>VSA_DERIVED_IMAGE_ID</code></td></tr>
+                <tr><td>Dependencies</td><td>Every direct package exactly matches <code>requirements-dgx.txt</code>; PyTorch remains supplied by NGC</td></tr>
+                <tr><td>Source revisions</td><td>Dataset, HellaSwag, and every official model use 40–64 hexadecimal immutable commit SHAs</td></tr>
+                <tr><td>Node</td><td>Node.js 22 or newer</td></tr>
+                <tr><td>Profile</td><td>CUDA device and BF16 dtype</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Unified capacity is checked through system RAM because DGX Spark uses unified memory. Do not replace that observation with a conventional discrete-VRAM interpretation.</p>
+        </section>
+        <section>
+          <h2>Command state machine</h2>
+          <pre class="mermaid">
+stateDiagram-v2
+  [*] --> Doctor
+  Doctor --> Download: preflight passes
+  Download --> Prepare: manifest has immutable SHAs
+  Prepare --> Train: format v5 validates
+  Train --> Evaluate: best checkpoint v2
+  Evaluate --> Transfer: archive CUDA/BF16 artifacts
+  Transfer --> VerifyHandoff: schema v1 hashes + exact commit
+  VerifyHandoff --> CPUBenchmark: x86 CPU/FP32
+  CPUBenchmark --> Blind
+  Blind --> Report
+  Report --> [*]
+          </pre>
+          <p>Each transition has a persisted identity. Rerunning a completed preparation with changed semantics, resuming from a different environment, or reporting a different workload is rejected. Create a new profile for a changed experiment.</p>
+          <p>Create the transfer inventory with <code>npm run handoff:create -- --profile dgx_spark</code> after the sparse official evaluation and both controls' custom evaluations are complete. On the exact source commit at the x86 destination, run <code>npm run handoff:verify -- --profile dgx_spark</code> before any benchmark. Reinstall the CPU environment, run <code>npm run download:deployment -- --profile dgx_spark</code>, and never transfer <code>.venv</code>. The deployment-only manifest cannot prepare or train, and DGX preparation must never be rerun on x86.</p>
+          <p>Configuration loading also validates representable vocabulary and route widths, model geometry, positive batch/evaluation settings, nonnegative token budgets, learning-rate ordering, warmup and regularization bounds, generation indexes, unique benchmark targets, sufficient repetitions, context headroom, and the registered CPU/FP32/x86 primary runtime. Invalid long-run profiles stop before creating artifacts.</p>
+        </section>
+        <section>
+          <h2>Common failures</h2>
+          <h3>Configuration drift</h3>
+          <p>If the current merge differs from <code>resolved_config.json</code>, do not edit or delete the frozen file to make the command pass. Preserve the old run and select a new profile/run directory.</p>
+          <h3>Prepared-data incompatibility</h3>
+          <p>A mismatched signature, tokenizer SHA, router SHA, or routing mode means token IDs or routes may have changed meaning. Regenerate the store and retrain; do not patch checkpoint metadata.</p>
+          <h3>Resume rejection</h3>
+          <p>Use <code>last.pt</code>, not <code>best.pt</code>. Resume also rejects source, PyTorch, CUDA, container-digest, optimizer, or RNG changes. If the environment cannot be restored, begin a new run.</p>
+          <h3>Missing official artifact</h3>
+          <p>Recreate the exact configured model artifact at its immutable revision. Reporting never falls back from 8M to 33M and never accepts a reordered manifest.</p>
+          <h3>Missing matched-control artifact</h3>
+          <p>The main report fails closed when a configured control lacks its resolved config, training summary, custom evaluation, or any custom CPU benchmark in the main thread set. Run <code>evaluate:custom</code> on DGX and <code>benchmark:custom:matrix</code> on x86; do not duplicate official baselines or run a separate control report.</p>
+          <h3>Wrong CPU runtime</h3>
+          <p>Regenerate benchmark artifacts on the designated x86 host with CPU FP32. ARM timing, CUDA timing, or a filename copied from another thread count fails runtime validation.</p>
+          <h3>Documentation partials do not load</h3>
+          <p>Serve <code>docs/</code> through HTTP. Browser security normally blocks <code>fetch()</code> for header, footer, and specification Markdown under a direct <code>file:</code> URL.</p>
+        </section>
+        <section>
+          <h2>Operational stop conditions</h2>
+          <p>Stop before training if the DGX doctor is not ready, the worktree is dirty, the NGC base lacks a recorded RepoDigest, direct dependencies are not exact, or immutable source snapshots cannot be resolved. Stop before benchmarking if the checkpoint/prepared provenance chain differs after transfer. Stop before reporting if any primary model, workload, runtime, or blind identity is missing.</p>
+          <div class="callout callout--danger">
+            <p>Do not use <code>npm run full</code> for an official DGX profile. It conflates accelerator work with the designated x86 deployment stage and is explicitly disabled for <code>dgx_spark</code>.</p>
+          </div>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

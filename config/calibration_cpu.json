@@ -1,0 +1,28 @@
+{
+  "paths": {"assets_manifest": "data/assets_full.json"},
+  "runtime": {"device": "cpu", "dtype": "fp32", "threads": 8},
+  "data": {"prepared_dir": "data/prepared/full"},
+  "training": {
+    "joint_target_tokens": 200000,
+    "expert_specialization_target_tokens": 0,
+    "eval_every_target_tokens": 200000,
+    "eval_batches": 4,
+    "eval_batch_size": 4,
+    "log_every_steps": 5
+  },
+  "evaluation": {
+    "test_stories": 32,
+    "hellaswag_examples": -1,
+    "prompt_count": 2,
+    "ablation_batches": 2,
+    "ablation_batch_size": 2
+  },
+  "benchmark": {
+    "prompt_character_targets": [128],
+    "decode_tokens": 16,
+    "warmup_repeats": 2,
+    "repeats": 5,
+    "prompt_samples_per_target": 2,
+    "primary_prompt_character_target": 128
+  }
+}

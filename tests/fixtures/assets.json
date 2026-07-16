@@ -1,0 +1,12 @@
+{
+  "dataset": {
+    "id": "offline-fixture",
+    "requested_revision": "local",
+    "resolved_sha": "local",
+    "train_path": "tests/fixtures/tiny_train.txt",
+    "valid_path": "tests/fixtures/tiny_valid.txt",
+    "prompts_path": "tests/fixtures/prompts.yaml",
+    "full_train_downloaded": true
+  },
+  "official_models": []
+}

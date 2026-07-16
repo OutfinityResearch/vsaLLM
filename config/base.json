@@ -1,0 +1,134 @@
+{
+  "project": {
+    "name": "VSA-PathMoE-10M TinyStories controlled benchmark",
+    "seed": 20260716
+  },
+  "paths": {
+    "assets_manifest": "data/assets.json",
+    "run_dir": "runs"
+  },
+  "sources": {
+    "dataset_repo": "roneneldan/TinyStories",
+    "dataset_revision": "main",
+    "train_file": "TinyStories-train.txt",
+    "valid_file": "TinyStories-valid.txt",
+    "prompts_file": "Evaluation prompts.yaml",
+    "official_models": [
+      {
+        "id": "roneneldan/TinyStories-8M",
+        "revision": "main",
+        "trained_context_length": 512
+      },
+      {
+        "id": "roneneldan/TinyStories-33M",
+        "revision": "main",
+        "trained_context_length": 512
+      }
+    ],
+    "hellaswag_dataset": "Rowan/hellaswag",
+    "hellaswag_revision": "main",
+    "hellaswag_split": "validation"
+  },
+  "runtime": {
+    "device": "auto",
+    "dtype": "fp32",
+    "threads": 4
+  },
+  "data": {
+    "prepared_dir": "data/prepared/default",
+    "use_valid_as_train": false,
+    "max_train_stories": 0,
+    "max_eval_stories": 0,
+    "min_story_chars": 80,
+    "minimum_continuation_chars": 24,
+    "conditioning_prefix_characters": 96,
+    "vocab_size": 2048,
+    "tokenizer_sample_stories": 200000,
+    "router_sample_stories": 100000,
+    "vsa_dimension": 512,
+    "router_prefix_bytes": 512,
+    "role_period": 64,
+    "router_product_k": 8,
+    "router_kmeans_iterations": 12,
+    "official_valid_validation_fraction": 0.5
+  },
+  "model": {
+    "block_size": 256,
+    "d_model": 192,
+    "n_layer": 6,
+    "n_head": 6,
+    "shared_hidden": 128,
+    "expert_hidden": 57,
+    "dropout": 0
+  },
+  "training": {
+    "batch_size": 8,
+    "gradient_accumulation": 4,
+    "joint_target_tokens": 320000000,
+    "expert_specialization_target_tokens": 80000000,
+    "learning_rate": 0.0015,
+    "minimum_learning_rate": 0.00015,
+    "expert_learning_rate": 0.001,
+    "expert_minimum_learning_rate": 0.0001,
+    "warmup_fraction": 0.03,
+    "weight_decay": 0.08,
+    "gradient_clip": 1,
+    "route_sampling_exponent": 0.5,
+    "log_every_steps": 20,
+    "checkpoint_every_target_tokens": 10000000,
+    "eval_every_target_tokens": 10000000,
+    "eval_batches": 32,
+    "eval_batch_size": 8
+  },
+  "evaluation": {
+    "test_stories": 2000,
+    "primary_quality_context": "native",
+    "run_common_context_diagnostic": true,
+    "common_context_length": 256,
+    "scoring_stride": 128,
+    "prompt_count": 44,
+    "hellaswag_examples": 0,
+    "ablation_batches": 64,
+    "ablation_batch_size": 8,
+    "blind_sample_index": 0,
+    "generation": {
+      "samples_per_prompt": 3,
+      "max_new_tokens": 128,
+      "temperature": 0.75,
+      "top_k": 40,
+      "top_p": 0.95
+    }
+  },
+  "benchmark": {
+    "custom_kernel_mode": "fused",
+    "common_context_length": 256,
+    "prompt_character_targets": [
+      128,
+      320,
+      512
+    ],
+    "decode_tokens": 64,
+    "warmup_repeats": 5,
+    "repeats": 30,
+    "prompt_samples_per_target": 4,
+    "primary_device": "cpu",
+    "primary_dtype": "fp32",
+    "primary_machine_architecture": "x86_64",
+    "primary_threads": 1,
+    "primary_prompt_character_target": 512
+  },
+  "comparison": {
+    "primary_official_model_id": "roneneldan/TinyStories-8M"
+  },
+  "success_gates": {
+    "conditional_bpb_relative_to_official_max": 1.02,
+    "cpu_end_to_end_speedup_min": 1.2,
+    "cpu_decode_speedup_min": 1.2,
+    "cpu_generated_byte_throughput_min": 1.2,
+    "cpu_resident_memory_ratio_max": 0.8,
+    "hellaswag_normalized_delta_min": -0.01,
+    "expert_gain_loss_min": 0.005,
+    "routing_gain_loss_min": 0.005,
+    "blind_preference_custom_min": 0.45
+  }
+}

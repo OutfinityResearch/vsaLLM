@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Training phases, checkpointing, and dense controls for VSA-PathMoE.">
+  <title>Training | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / Training</p>
+        <p class="kicker">CUDA BF16 with recoverable state</p>
+        <h1>Training and checkpoints</h1>
+        <p class="hero__lede">The official sparse and dense-control runs use reviewed DGX Spark profiles, a shared prepared store, and format-version 2 checkpoints every two million target tokens.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>Frozen training profiles</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Profile</th><th>Routing</th><th>Total parameters</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td><code>dgx_spark</code></td><td>64-route VSA</td><td>10,029,504</td><td>Candidate architecture</td></tr>
+                <tr><td><code>dgx_spark_dense_active</code></td><td>Fixed route 0</td><td>1,755,840</td><td>Matched-active control</td></tr>
+                <tr><td><code>dgx_spark_dense_total</code></td><td>Fixed route 0</td><td>10,029,504</td><td>Matched-total control</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>All three use <code>device=cuda</code>, <code>dtype=bf16</code>, four host threads, batch size 32, gradient accumulation 2, evaluation batch size 16, and <code>data/prepared/dgx_spark</code>. The shared base training budget is 320 million joint-phase target tokens followed by 80 million expert-specialization target tokens. The profiles alter only the architecture fields needed for their comparison role.</p>
+          <p>The container derives from the NGC PyTorch 25.11 image, but a mutable tag is not sufficient evidence. Before an official run, resolve the pulled base image to its registry RepoDigest, build and run from that immutable base, record the derived image ID and installed package freeze, and export the digest used by the fail-closed DGX doctor.</p>
+          <p>Training invokes that doctor internally for every <code>dgx_spark*</code> profile and refuses to begin unless it is fully ready. The explicit preflight command remains part of the run record; it is not the only enforcement point.</p>
+          <p>For DGX profiles, training also requires the prepared store's recorded runtime-source SHA, Git identity and clean state, PyTorch/CUDA/cuDNN/driver versions, GPU identity and compute capability, container tag, base digest, and derived image ID to equal the current training environment. Preparation, training, and resume therefore form one pinned accelerator provenance chain.</p>
+        </section>
+        <section>
+          <h2>Two training phases</h2>
+          <pre class="mermaid">
+stateDiagram-v2
+  [*] --> Joint
+  Joint: all parameters trainable
+  Joint: route sampling exponent 0.5
+  Joint --> BestJoint: validation selects checkpoint
+  BestJoint --> Experts
+  Experts: only expert matrices trainable
+  Experts: uniform over active routes
+  Experts --> Complete
+  Complete --> [*]
+          </pre>
+          <p>The joint phase trains embeddings, attention, shared feed-forward matrices, and every route expert. Routes are sampled from their training frequencies raised to exponent 0.5, reducing dominance by common routes without making the distribution fully uniform. Gradient accumulation is normalized by the number of valid continuation targets, so unequal microbatch padding does not distort the update.</p>
+          <p>At the phase boundary, specialization starts from the best joint validation checkpoint rather than the last update. Only expert input and output matrices remain trainable, and sampling is uniform over routes that occur in training. The same fixed validation batches select improvements. Dense controls have one model route and follow the same phase machinery.</p>
+        </section>
+        <section>
+          <h2>Checkpoint contract</h2>
+          <p>Checkpoint format version 2 stores model configuration and state, optimizer state where appropriate, complete training state, and metadata linking the profile, routing mode, resolved-config SHA, prepared metadata, environment, and parameter accounting. Writes use a temporary file followed by atomic replacement.</p>
+          <p>Every DGX profile checkpoints at each 2,000,000-target-token boundary and at phase completion. <code>last.pt</code> carries optimizer, NumPy RNG, gradient-scaler state, phase counters, global step, route usage, best loss, and the next evaluation and checkpoint boundaries. <code>best.pt</code> is selected on validation loss and deliberately omits optimizer state; it is for evaluation or phase initialization, not resume.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Artifact</th><th>Use</th><th>Resume-capable</th></tr></thead>
+              <tbody>
+                <tr><td><code>runs/&lt;profile&gt;/checkpoints/last.pt</code></td><td>Recovery at the latest checkpoint cadence</td><td>Yes, with full state</td></tr>
+                <tr><td><code>runs/&lt;profile&gt;/checkpoints/best.pt</code></td><td>Quality evaluation and best-phase handoff</td><td>No</td></tr>
+                <tr><td><code>runs/&lt;profile&gt;/artifacts/train_log.jsonl</code></td><td>Step, validation, and checkpoint events</td><td>Evidence only</td></tr>
+                <tr><td><code>training_summary.json</code></td><td>Final budget, throughput, and provenance summary</td><td>Evidence only</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section>
+          <h2>Resume and environment identity</h2>
+          <p>A resume accepts only <code>last.pt</code> from the same resolved configuration and prepared semantics. It also compares executable-source identity, PyTorch version, CUDA version, and container digest, and requires optimizer and stochastic state. This prevents a hardware or software change from being silently folded into one training history.</p>
+          <pre><code>npm run train -- --profile dgx_spark \
+  --resume runs/dgx_spark/checkpoints/last.pt</code></pre>
+          <p>If a compatibility field differs, create a new profile and run directory. Do not edit <code>resolved_config.json</code> or transplant optimizer state. Recovery is a continuation of one frozen experiment, not a mechanism for adapting the protocol.</p>
+        </section>
+        <section>
+          <h2>Official execution order</h2>
+          <pre><code>npm run doctor:dgx -- --profile dgx_spark --strict
+npm run train -- --profile dgx_spark
+npm run evaluate -- --profile dgx_spark
+
+npm run doctor:dgx -- --profile dgx_spark_dense_active --strict
+npm run train -- --profile dgx_spark_dense_active
+npm run evaluate:custom -- --profile dgx_spark_dense_active
+
+npm run doctor:dgx -- --profile dgx_spark_dense_total --strict
+npm run train -- --profile dgx_spark_dense_total
+npm run evaluate:custom -- --profile dgx_spark_dense_total</code></pre>
+          <div class="callout callout--danger">
+            <p><strong>Never run <code>npm run full -- --profile dgx_spark</code>.</strong> The monolithic command is disabled because GPU training/evaluation and commodity-x86 CPU benchmarking are different stages on different machines. Use the staged <a href="dgx-runbook.html">DGX runbook</a>.</p>
+          </div>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

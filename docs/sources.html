@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Primary sources and related work for VSA-PathMoE, TinyStories, VSA, MoE, and DGX Spark.">
+  <title>Sources | VSA-PathMoE Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page">
+    <article class="page__panel">
+      <header class="hero">
+        <p class="breadcrumb"><a href="index.html">Documentation</a> / Sources</p>
+        <p class="kicker">Primary evidence and related work</p>
+        <h1>Sources and claim boundaries</h1>
+        <p class="hero__lede">These sources justify dataset roles, baseline identity, operational choices, and related-work positioning. They do not supply the missing experimental result.</p>
+      </header>
+      <div class="content">
+        <section>
+          <h2>TinyStories data and checkpoints</h2>
+          <ol class="source-list">
+            <li>Ronen Eldan and Yuanzhi Li, <a href="https://arxiv.org/abs/2305.07759">“TinyStories: How Small Can Language Models Be and Still Speak Coherent English?”</a> The primary paper motivates a synthetic domain in which sub-10M models can be evaluated for coherent generation. It supports the benchmark domain, not a VSA result.</li>
+            <li><a href="https://huggingface.co/datasets/roneneldan/TinyStories">Official TinyStories dataset repository</a>, including <code>TinyStories-train.txt</code>, <code>TinyStories-valid.txt</code>, and the published prompt file. The DGX profile pins resolved revision <code>f54c09fd…f9c64</code>; the execution manifest must retain the full SHA.</li>
+            <li>Official model repositories for <a href="https://huggingface.co/roneneldan/TinyStories-8M">TinyStories-8M</a> and <a href="https://huggingface.co/roneneldan/TinyStories-33M">TinyStories-33M</a>. The DGX profile pins revisions <code>8612e3b1…30af</code> and <code>2ad0a164…fc8</code>, respectively.</li>
+            <li>The checkpoint author's <a href="https://huggingface.co/roneneldan/TinyStories-33M/discussions/12">context-length clarification</a> distinguishes the 512-token training window from 2,048 stored positional embeddings. The protocol records both values rather than treating artifact capacity as training evidence.</li>
+            <li>Rowan Zellers et al., <a href="https://arxiv.org/abs/1905.07830">“HellaSwag: Can a Machine Really Finish Your Sentence?”</a>, and the <a href="https://huggingface.co/datasets/Rowan/hellaswag">published dataset</a>. HellaSwag is a secondary diagnostic, not the TinyStories primary criterion.</li>
+          </ol>
+        </section>
+        <section>
+          <h2>Mixture-of-Experts and deterministic access</h2>
+          <ol class="source-list">
+            <li>Noam Shazeer et al., <a href="https://arxiv.org/abs/1701.06538">“Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer.”</a> This establishes the learned sparse-gating lineage.</li>
+            <li>William Fedus, Barret Zoph, and Noam Shazeer, <a href="https://www.jmlr.org/papers/v23/21-0998.html">“Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity.”</a> Switch routing provides a central token-level sparse-MoE comparison and documents BF16 sparse training at a very different scale.</li>
+            <li>Stephen Roller et al., <a href="https://arxiv.org/abs/2106.04426">“Hash Layers for Large Sparse Models.”</a> Deterministic hashing demonstrates that learned gates are not the only sparse-routing design; its token-level hash is not the request-prefix VSA router implemented here.</li>
+            <li>Guillaume Lample et al., <a href="https://arxiv.org/abs/1907.05242">“Large Memory Layers with Product Keys.”</a> Product-key sparse access is relevant to the two-codebook route construction.</li>
+          </ol>
+          <p>These works mean the repository should describe an implemented design distinction rather than assert unqualified novelty. Priority requires a broader literature review; performance requires this repository's controlled experiment.</p>
+        </section>
+        <section>
+          <h2>Vector Symbolic Architectures</h2>
+          <ol class="source-list">
+            <li>Pentti Kanerva, <a href="https://doi.org/10.1007/s12559-009-9009-8">“Hyperdimensional Computing: An Introduction to Computing in Distributed Representation with High-Dimensional Random Vectors.”</a> This is a foundational account of high-dimensional distributed representation and bipolar operations.</li>
+            <li>Denis Kleyko et al., <a href="https://arxiv.org/abs/2111.06077">“A Survey on Hyperdimensional Computing aka Vector Symbolic Architectures, Part I.”</a> The survey situates bundling, binding, and distributed representations across VSA families.</li>
+          </ol>
+          <p>The literature supports the operation family. It does not establish that this byte code, prefix boundary, prototype fitting method, or route assignment captures semantic relevance. Route entropy and ablation losses provide implementation-specific evidence; they are not supplied by citation.</p>
+        </section>
+        <section>
+          <h2>Runtime and DGX Spark</h2>
+          <ol class="source-list">
+            <li><a href="https://docs.nvidia.com/dgx/dgx-spark/hardware.html">NVIDIA DGX Spark hardware overview</a>, <a href="https://docs.nvidia.com/dgx/dgx-spark/software.html">software guide</a>, and <a href="https://docs.nvidia.com/dgx/dgx-spark/nvidia-container-runtime-for-docker.html">container-runtime guide</a>. These document the supplied 240 W power requirement, supported software stack, and GPU exposure through the NVIDIA Container Runtime.</li>
+            <li><a href="https://docs.nvidia.com/dgx/dgx-spark/ngc.html">NVIDIA's NGC guidance for DGX Spark</a>. It covers registry authentication, ARM64 tooling, GPU container execution, persistent volumes, and version pinning.</li>
+            <li><a href="https://catalog.ngc.nvidia.com/orgs/nvidia/-/containers/pytorch/25.11-py3">NVIDIA NGC PyTorch 25.11 container entry</a>. This is the human-readable base selected by the Dockerfile; the official run additionally records the registry RepoDigest resolved at pull time.</li>
+            <li><a href="https://docs.docker.com/dhi/core-concepts/digests/">Docker image-digest documentation</a>. A digest identifies immutable image content, whereas a tag can move.</li>
+            <li><a href="https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html">PyTorch scaled dot-product attention</a>, <a href="https://docs.pytorch.org/docs/stable/amp.html">automatic mixed precision</a>, and <a href="https://docs.pytorch.org/docs/stable/generated/torch.inference_mode.html">inference mode</a> document the tensor primitives used by the implementation.</li>
+          </ol>
+          <p>Operational documentation changes over time. The frozen run archives exact observed software, driver, CUDA, PyTorch, tag, RepoDigest, derived image ID, and package freeze rather than relying on the latest web page after execution.</p>
+        </section>
+        <section>
+          <h2>What the sources do not prove</h2>
+          <p>No citation demonstrates that this checkpoint is faster, smaller in resident memory, or non-inferior in quality. No parameter-count calculation substitutes for measured process memory. No TinyStories outcome establishes general natural-language ability. No VSA reference establishes that the router selected the most relevant expert.</p>
+          <div class="callout callout--warning">
+            <p>The defensible contribution at the current stage is a concrete request-level VSA-routed MoE hypothesis and a reproducible, fail-closed comparison protocol. The performance contribution remains pending until its artifacts exist.</p>
+          </div>
+        </section>
+      </div>
+    </article>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>
